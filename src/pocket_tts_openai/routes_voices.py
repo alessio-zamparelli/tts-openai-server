@@ -6,7 +6,6 @@ valid ``voice`` values and clone new voices from an uploaded audio prompt.
 
 from __future__ import annotations
 
-import os
 import tempfile
 from pathlib import Path
 
@@ -21,17 +20,21 @@ from .errors import (
     invalid_request,
     method_not_allowed,
     not_found,
+    not_implemented,
     payload_too_large,
     unavailable,
 )
 from .voice_registry import validate_voice_name
-from .voices import DEFAULT_VOICE_ALIASES, KYUTAI_CATALOG, VOICE_LANGUAGE
+from .voices import KYUTAI_CATALOG, VOICE_LANGUAGE, piper_language
 
 # Extensions that pocket-tts can decode as an audio prompt.
 _AUDIO_EXTS = (".wav", ".mp3", ".flac")
 
 # HF repo that hosts the Kyutai voice licenses / origins.
 VOICES_REPO = "https://huggingface.co/kyutai/tts-voices"
+
+# HF repo that hosts Piper voices (and each voice's MODEL_CARD license).
+PIPER_VOICES_REPO = "https://huggingface.co/rhasspy/piper-voices"
 
 # Content-type header used by multipart client hints.
 router = APIRouter()
@@ -44,13 +47,19 @@ def _engine_or_503(request: Request) -> TTSEngine:
     return engine
 
 
-def _builtin_voice_entry(alias: str, target: str) -> dict:
+def _builtin_voice_entry(alias: str, target: str, backend: str = "pocket") -> dict:
+    if backend == "piper":
+        language = piper_language(target)
+        license_url = PIPER_VOICES_REPO
+    else:
+        language = VOICE_LANGUAGE.get(target, "en")
+        license_url = VOICES_REPO
     return {
         "id": alias,
         "aliases": [alias, target],
         "source": "builtin",
-        "language": VOICE_LANGUAGE.get(target, "en"),
-        "license": VOICES_REPO,
+        "language": language,
+        "license": license_url,
         "cached": False,
     }
 
@@ -79,22 +88,33 @@ def list_voices(request: Request) -> dict:
     seen: set[str] = set()
     # OpenAI aliases first (stable, declared order).
     for alias, target in cfg.voice_map.items():
-        entry = _builtin_voice_entry(alias, target)
+        entry = _builtin_voice_entry(alias, target, cfg.backend)
         entry["cached"] = target in cached
         data.append(entry)
         seen.add(target)
-    # Extra catalog voices not already covered by an alias.
-    for name in sorted(KYUTAI_CATALOG):
-        if name in seen:
+    # Extra catalog voices not already covered by an alias. Piper has no static
+    # catalog: list the voice files that are actually installed locally.
+    catalog = (
+        (engine.installed_voices() if engine is not None else [])
+        if cfg.backend == "piper"
+        else sorted(KYUTAI_CATALOG)
+    )
+    for name in catalog:
+        if name in seen and cfg.backend != "piper":
             continue
-        entry = _builtin_voice_entry(name, name)
+        entry = _builtin_voice_entry(name, name, cfg.backend)
         entry["cached"] = name in cached
         data.append(entry)
-    # Custom voices from the registry.
+    # Custom voices from the registry (pocket-tts only).
     for voice in (engine.registry.all() if engine and engine.registry else []):
         data.append(_custom_voice_entry(request, voice.name, voice))
 
-    return {"object": "list", "data": data}
+    return {
+        "object": "list",
+        "data": data,
+        "backend": cfg.backend,
+        "clone_supported": bool(engine and engine.supports_cloning),
+    }
 
 
 def _collision(name: str, cfg: Config, engine: TTSEngine) -> str | None:
@@ -118,7 +138,12 @@ def create_voice(
     """Clone a voice from an uploaded audio prompt and persist it."""
     cfg: Config = request.app.state.config
     engine = _engine_or_503(request)
-    if engine.registry is None:
+    if not engine.supports_cloning:
+        raise not_implemented(
+            f"Voice cloning is not supported by the {engine.model_name} backend. "
+            "Run the server with POCKET_TTS_BACKEND=pocket to clone from an audio prompt."
+        )
+    if engine.registry is None:  # pragma: no cover - supports_cloning implies registry
         raise invalid_request("voice registry is not configured")
 
     error = validate_voice_name(name)
@@ -178,11 +203,15 @@ def delete_voice(name: str, request: Request) -> Response:
     """Remove a custom voice (file + registry entry). Builtin voices are 405."""
     cfg: Config = request.app.state.config
     engine = _engine_or_503(request)
-    if engine.registry is None:
-        raise invalid_request("voice registry is not configured")
 
-    if name in cfg.voice_map or name in KYUTAI_CATALOG:
+    builtin = name in cfg.voice_map or name in KYUTAI_CATALOG
+    if cfg.backend == "piper":
+        builtin = builtin or name in engine.installed_voices()
+    if builtin:
         raise method_not_allowed(f"'{name}' is a built-in voice and cannot be deleted.")
+    if engine.registry is None:
+        # Piper has no custom-voice registry at all.
+        raise not_found(f"Unknown custom voice '{name}'.")
 
     voice = engine.registry.get(name)
     if voice is None:

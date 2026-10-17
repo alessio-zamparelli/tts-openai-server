@@ -1,0 +1,40 @@
+pocket-tts-openai
+=================
+
+This project's own source code is licensed under the MIT License (see
+`pyproject.toml`).
+
+Default TTS engine: Piper
+-------------------------
+
+The default backend and the default Docker image use PiPER from the Open Home
+Foundation:
+
+  https://github.com/OHF-Voice/piper1-gpl
+
+The PyPI package `piper-tts` is distributed under the GNU General Public
+License, version 3 or later (GPL-3.0-or-later). It embeds eSpeak-ng
+(https://github.com/espeak-ng/espeak-ng), which is also GPL-3.0-or-later.
+
+Installing the `piper` extra, or distributing/building the default Docker
+image, therefore combines this project with GPL-3.0-or-later components. Such
+combined distributions must comply with the GPL (including source availability
+for the GPL-covered components). The MIT license continues to apply to this
+project's own code.
+
+Piper voice models are downloaded from:
+
+  https://huggingface.co/rhasspy/piper-voices
+
+Each voice has its own MODEL_CARD with dataset/license information; review it
+before redistribution. The default voice `it_IT-paola-medium` is derived from
+the dataset referenced in its model card:
+https://huggingface.co/datasets/paolapersico1/Voice-Dataset-Italian
+
+Optional backend: pocket-tts
+----------------------------
+
+`pocket-tts` (https://github.com/kyutai-labs/pocket-tts) and its voice catalog
+(https://huggingface.co/kyutai/tts-voices) have their own licenses, independent
+of this project. They are only installed with the `engine` extra and are not
+part of the default Docker image.

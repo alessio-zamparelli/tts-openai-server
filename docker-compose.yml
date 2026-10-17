@@ -8,6 +8,9 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile
+      args:
+        # 1 also installs pocket-tts + CPU torch (~1 GB image) and seeds jarvis1.
+        WITH_POCKET: "0"
     image: pocket-tts-openai:local
     ports:
       - "8080:8000"
@@ -18,28 +21,27 @@ services:
       # Bind address/port (the app listens on 8000 inside the container).
       - POCKET_TTS_HOST=0.0.0.0
       - POCKET_TTS_PORT=8000
-      # TTS language and model tier. The base 6-layer model per language is the
-      # smallest available; *_24l variants (english_2026-04_24l, french_24l,
-      # german_24l, spanish_24l) are larger quality upgrades.
-      - POCKET_TTS_LANGUAGE=italian
-      # OpenAI voice alias used when a request omits "voice".
-      - POCKET_TTS_DEFAULT_VOICE=eponine
+      # Default backend: piper (or pocket, only in a WITH_POCKET=1 image).
+      - POCKET_TTS_BACKEND=piper
+      # OpenAI aliases (alloy, echo, ...) and requests without "voice" use this.
+      - POCKET_TTS_DEFAULT_VOICE=it_IT-paola-medium
+      # Where Piper .onnx models are cached (baked into /data by the image).
+      # - POCKET_TTS_PIPER_VOICE_DIR=/data/cache/piper
+      # Download missing Piper voices on demand from rhasspy/piper-voices.
+      # - POCKET_TTS_PIPER_AUTO_DOWNLOAD=true
+      # LRU of loaded Piper voices. Each entry is a whole ONNX session (~60 MB),
+      # so keep this small; pocket-tts uses a larger state cache instead.
+      # - POCKET_TTS_MAX_CACHED_VOICES=2
       # Extra alias->voice mapping, comma-separated: alias1=voice1,alias2=voice2
-      # (merges over the built-in catalog). Not a plain voice name: every entry
-      # must be `alias=voice` (a bare value like `VOICE_MAP=eponine` fails at
-      # startup with a clear ValueError).
-      # - POCKET_TTS_VOICE_MAP=
-      # Comma-separated voices to pre-encode at startup (warms the model cache).
-      - POCKET_TTS_WARMUP_VOICES=eponine
-      # int8 weights: ~62% less resident RAM, ~27% faster on x86 (FBGEMM/AVX2),
-      # no quality change. Biggest memory lever besides idle eviction.
-      - POCKET_TTS_QUANTIZE=1
-      # LRU voice-state cache size (per cloned voice, not per model copy).
-      # - POCKET_TTS_MAX_CACHED_VOICES=32
-      # Base dir for the cloned-voice registry. Image default points it into the
-      # persistent volume. Change only when rebinding the volume.
+      # (merges over the backend defaults). Every entry must be `alias=voice`.
+      # - POCKET_TTS_VOICE_MAP=alloy=en_US-lessac-medium
+      # Comma-separated voices to load at startup.
+      # - POCKET_TTS_WARMUP_VOICES=
+      # --- pocket-tts backend (requires WITH_POCKET=1 above) ------------------
+      # - POCKET_TTS_BACKEND=pocket
+      # - POCKET_TTS_LANGUAGE=italian_24l
+      # - POCKET_TTS_QUANTIZE=1
       # - POCKET_TTS_CACHE_DIR=/data/cache
-      # Max cloned-voice upload size, in MB.
       # - POCKET_TTS_MAX_UPLOAD_MB=25
       # Evict the model from RAM after this many idle seconds with no API
       # requests; 0 keeps the model resident always. Next request reloads it.
@@ -57,14 +59,14 @@ services:
       # (audio speech, models, voices). Strongly recommended for public deploys.
       # - POCKET_TTS_API_KEY=change-me
     volumes:
-      # Persistent model weights + voice registry across restarts.
+      # Persistent Piper voices + pocket weights + cloned-voice registry.
       - tts-data:/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).read()"]
       interval: 30s
       timeout: 5s
-      start_period: 120s
+      start_period: 30s
       retries: 3
 
 volumes:

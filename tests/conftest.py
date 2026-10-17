@@ -11,6 +11,7 @@ import pytest
 
 from pocket_tts_openai.config import Config
 from pocket_tts_openai.engine import TTSEngine
+from pocket_tts_openai.piper_backend import PiperTTSModel
 from pocket_tts_openai.server import create_app
 from pocket_tts_openai.voice_registry import VoiceRegistry
 
@@ -81,7 +82,9 @@ def fake_model() -> FakeTTSModel:
 
 @pytest.fixture
 def config() -> Config:
-    return Config()
+    # The shared suite exercises the original pocket-tts semantics (Kyutai
+    # catalog + aliases). Piper has its own fixtures in test_piper_*.py.
+    return Config(backend="pocket")
 
 
 @pytest.fixture
@@ -105,5 +108,80 @@ def client(engine: TTSEngine, config: Config):
     from fastapi.testclient import TestClient
 
     app = create_app(config, engine)
+    with TestClient(app) as c:
+        yield c
+
+
+# -- Piper fake backend ------------------------------------------------------
+
+
+class _FakePiperConfig:
+    def __init__(self, sample_rate: int):
+        self.sample_rate = sample_rate
+
+
+class _FakePiperChunk:
+    def __init__(self, audio: np.ndarray):
+        self.audio_float_array = audio
+
+
+class FakePiperVoice:
+    """Duck-typed PiperVoice: two 0.25 s chunks (one per fake sentence)."""
+
+    def __init__(self, sample_rate: int):
+        self.config = _FakePiperConfig(sample_rate)
+
+    def synthesize(self, text: str):
+        # Two chunks totaling exactly 0.5 s (rate is odd for 22.05 kHz).
+        total = self.config.sample_rate // 2
+        first = total - self.config.sample_rate // 4
+        yield _FakePiperChunk(np.zeros(first, dtype=np.float32))
+        yield _FakePiperChunk(
+            np.zeros(self.config.sample_rate // 4, dtype=np.float32)
+        )
+
+
+def piper_rate_for(path: Path) -> int:
+    """16 kHz for low/x_low tiers, 22.05 kHz otherwise (mirrors Piper)."""
+    return 16000 if path.stem.endswith(("-low", "-x_low")) else 22050
+
+
+def fake_piper_loader(path: Path):
+    return FakePiperVoice(piper_rate_for(path))
+
+
+def fake_piper_download(voice: str, directory: Path) -> None:
+    """Materialize the .onnx/.onnx.json pair a real download would produce."""
+    rate = 16000 if voice.endswith(("-low", "-x_low")) else 22050
+    (directory / f"{voice}.onnx").write_bytes(b"fake-piper-onnx")
+    (directory / f"{voice}.onnx.json").write_text(
+        f'{{"audio": {{"sample_rate": {rate}}}}}', encoding="utf-8"
+    )
+
+
+@pytest.fixture
+def piper_config(tmp_path: Path) -> Config:
+    return Config(
+        backend="piper",
+        piper_voice_dir=str(tmp_path / "piper"),
+        default_voice="it_IT-paola-medium",
+    )
+
+
+@pytest.fixture
+def piper_engine(piper_config: Config) -> TTSEngine:
+    model = PiperTTSModel(
+        piper_config,
+        voice_loader=fake_piper_loader,
+        downloader=fake_piper_download,
+    )
+    return TTSEngine(model, config=piper_config)
+
+
+@pytest.fixture
+def piper_client(piper_config: Config, piper_engine: TTSEngine):
+    from fastapi.testclient import TestClient
+
+    app = create_app(piper_config, piper_engine)
     with TestClient(app) as c:
         yield c

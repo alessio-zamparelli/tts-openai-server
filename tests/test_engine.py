@@ -39,7 +39,7 @@ def test_voice_state_cached_across_requests(engine, fake_model):
 def test_voice_lru_eviction(fake_model):
     from pocket_tts_openai.config import Config
 
-    engine = TTSEngine(fake_model, config=Config(max_cached_voices=2))
+    engine = TTSEngine(fake_model, config=Config(backend="pocket", max_cached_voices=2))
     engine.generate_pcm("a", "alloy")  # alba
     engine.generate_pcm("b", "echo")  # charles
     engine.generate_pcm("c", "fable")  # eponine -> evicts alba

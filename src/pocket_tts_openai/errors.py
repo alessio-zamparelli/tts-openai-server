@@ -55,3 +55,7 @@ def payload_too_large(message: str) -> OpenAIError:
 
 def method_not_allowed(message: str) -> OpenAIError:
     return OpenAIError(message, status=405, type_="invalid_request_error", code="method_not_allowed")
+
+
+def not_implemented(message: str) -> OpenAIError:
+    return OpenAIError(message, status=501, type_="invalid_request_error", code="not_implemented")

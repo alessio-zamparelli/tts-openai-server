@@ -187,10 +187,10 @@ class TTSModelLike(Protocol):
 
 
 class TTSEngine:
-    """Wraps a pocket-tts model behind a generation lock.
+    """Wraps a backend model (Piper or pocket-tts) behind a generation lock.
 
-    Any duck-typed model works; tests inject fakes and production loads
-    pocket-tts lazily via :func:`load_engine`.
+    Any duck-typed model works; tests inject fakes and production loads the
+    configured backend lazily via :func:`load_engine`.
     """
 
     def __init__(
@@ -202,7 +202,7 @@ class TTSEngine:
         export_state: "Callable[[object, str | Path], None] | None" = None,
         loader: "Callable[[], TTSModelLike] | None" = None,
     ):
-        """Wrap a pocket-tts model behind a generation lock.
+        """Wrap a backend model behind a generation lock.
 
         ``model`` may be ``None`` (pre-load); production passes a real model and a
         ``loader`` closure so the engine can rebuild it after an idle eviction.
@@ -219,8 +219,17 @@ class TTSEngine:
         # Serialization hook for cloning. Defaults (lazily) to pocket-tts'
         # module-level export_model_state; tests inject a no-op/fake.
         self._export_state = export_state
+        self.backend: str = getattr(model, "backend", config.backend)
         self.sample_rate: int = model.sample_rate if model is not None else 0
-        self.language: str = config.language
+        self.default_voice: str = getattr(model, "default_voice", config.default_voice)
+        self.language: str = getattr(model, "language", config.language)
+        # A Piper cache entry is a whole ONNX session (~60-110 MB), unlike a
+        # pocket-tts voice-state snapshot, so it gets a much smaller default.
+        self._max_cached_voices: int = (
+            config.max_cached_voices
+            if config.max_cached_voices is not None
+            else (2 if config.backend == "piper" else 32)
+        )
         self.stats = EngineStats()
         self._gen_lock = threading.Lock()
         self._state_lock = threading.Lock()
@@ -244,6 +253,23 @@ class TTSEngine:
         """Eviction is only possible when a loader (production) is attached
         and ``idle_unload_s > 0``. Fakes without a loader never evict."""
         return self._loader is not None and self._config.idle_unload_s > 0
+
+    @property
+    def model_name(self) -> str:
+        """Human-readable engine name for /health and /v1/models."""
+        return "pocket-tts" if self.backend == "pocket" else self.backend
+
+    @property
+    def supports_cloning(self) -> bool:
+        """Prompt-based voice cloning is a pocket-tts-only feature."""
+        return self.registry is not None and bool(
+            getattr(self._model, "supports_cloning", True)
+        )
+
+    def installed_voices(self) -> list[str]:
+        """Backend-provided local catalog (Piper scans its voice dir)."""
+        fn = getattr(self._model, "installed_voices", None)
+        return list(fn()) if fn is not None else []
 
     def touch(self) -> None:
         """Record an API request at ``now`` (resets the idle window)."""
@@ -273,10 +299,13 @@ class TTSEngine:
             self._reload_in_flight = True
             try:
                 t0 = time.perf_counter()
-                logger.info("reloading pocket-tts model…")
+                logger.info("reloading %s model…", self.backend)
                 model = self._loader()
                 self._model = model
+                self.backend = getattr(model, "backend", self._config.backend)
                 self.sample_rate = model.sample_rate
+                self.default_voice = getattr(model, "default_voice", self.default_voice)
+                self.language = getattr(model, "language", self.language)
                 self.stats.reloads += 1
                 logger.info(
                     "model reloaded in %.2fs (RSS %s MB)", time.perf_counter() - t0, _rss_mb()
@@ -355,7 +384,26 @@ class TTSEngine:
             path = registry.path_for(v)
             if path.exists():
                 return str(path)
+        model = self.ensure_loaded()
+        resolver = getattr(model, "resolve_voice", None)
+        if resolver is not None:
+            return str(resolver(requested_voice))
         return resolve_voice(requested_voice, self._config.voice_map)
+
+    def sample_rate_for(self, voice: str) -> int:
+        """Output sample rate for ``voice``.
+
+        Pocket-tts uses one rate for the whole model (24 kHz); Piper voices
+        differ by quality tier (16 kHz for low/x_low, 22.05 kHz for medium/high).
+        """
+        _, resolved = self.voice_state(voice)
+        return self._sample_rate_resolved(resolved)
+
+    def _sample_rate_resolved(self, resolved: str) -> int:
+        """Sample rate for an already-resolved voice state key."""
+        model = self.ensure_loaded()
+        fn = getattr(model, "sample_rate_for", None)
+        return int(fn(resolved)) if fn is not None else self.sample_rate
 
     def voice_state(self, requested_voice: str) -> tuple[object, str]:
         """Return (ModelState, resolved_voice_name), encoding/caching on miss.
@@ -397,11 +445,11 @@ class TTSEngine:
         try:
             t0 = time.perf_counter()
             state = model.get_state_for_audio_prompt(resolved)
-            logger.info("voice %r encoded in %.2fs", resolved, time.perf_counter() - t0)
+            logger.info("voice %r ready in %.2fs", resolved, time.perf_counter() - t0)
             with self._state_lock:
                 self._voice_states[resolved] = state
                 self._voice_states.move_to_end(resolved)
-                while len(self._voice_states) > self._config.max_cached_voices:
+                while len(self._voice_states) > self._max_cached_voices:
                     self._voice_states.popitem(last=False)
             return state, resolved
         finally:
@@ -443,8 +491,13 @@ class TTSEngine:
         outside the generation lock, so a slow disk write during a clone never
         stalls in-flight synthesis requests.
         """
+        if not self.supports_cloning:
+            raise RuntimeError(
+                "voice cloning is not supported by the "
+                f"{self.model_name} backend (use POCKET_TTS_BACKEND=pocket)"
+            )
         registry = self.registry
-        if registry is None:
+        if registry is None:  # pragma: no cover - supports_cloning implies registry
             raise RuntimeError("voice registry is not configured")
         dest = registry.path_for(name)
         self.touch()
@@ -519,7 +572,9 @@ class TTSEngine:
             self._gen_lock.acquire()
 
     def generate_pcm(self, text: str, voice: str) -> bytes:
-        """Serialize on the global lock; return raw mono s16le PCM at 24 kHz.
+        """Serialize on the global lock; return raw mono s16le PCM.
+
+        The rate is backend/voice specific (see :meth:`sample_rate_for`).
 
         Captures the (possibly just-reloaded) model up front so a wake-up runs
         on the same instance that encoded the voice state. The queue guard
@@ -540,7 +595,7 @@ class TTSEngine:
             finally:
                 self._gen_lock.release()
         pcm = to_pcm16(audio)
-        seconds = len(pcm) / (2 * self.sample_rate)
+        seconds = len(pcm) / (2 * self._sample_rate_resolved(resolved))
         self.stats.requests += 1
         self.stats.audio_seconds += seconds
         self.stats.generate_seconds += elapsed
@@ -558,7 +613,7 @@ class TTSEngine:
 
         The lock is held for the lifetime of the generator (StreamingResponse
         iterates it in a worker thread). If the consumer abandons the generator
-        (client disconnect), the pocket-tts iterator stops being pulled and the
+        (client disconnect), the backend iterator stops being pulled and the
         lock is released at the generator's close. The queue guard likewise
         spans the whole stream, so capacity is accounted start to finish.
         """
@@ -568,6 +623,7 @@ class TTSEngine:
             model = self.ensure_loaded()
             self.touch()
             state, resolved = self.voice_state(voice)
+            rate = self._sample_rate_resolved(resolved)
             self._acquire_gen_lock()
             try:
                 t0 = time.perf_counter()
@@ -575,7 +631,7 @@ class TTSEngine:
                 try:
                     for chunk in model.generate_audio_stream(state, text):
                         pcm = to_pcm16(chunk)
-                        audio_seconds += len(pcm) / (2 * self.sample_rate)
+                        audio_seconds += len(pcm) / (2 * rate)
                         yield pcm
                 finally:
                     elapsed = time.perf_counter() - t0
@@ -594,11 +650,19 @@ class TTSEngine:
 
 
 def load_engine(config: Config) -> TTSEngine:
-    """Production engine factory. Imports pocket-tts lazily so tests/dev can run
-    without it, then loads the model (first call downloads weights to disk cache)
-    and attaches a ``loader`` so the engine can rebuild itself after an idle
-    eviction (PLAN-idle-unload.md).
+    """Production engine factory, dispatching on ``Config.backend``.
+
+    Both backends import their engine lazily so the default test run (fake
+    model, no extras installed) stays offline and fast. The returned engine has
+    a ``loader`` attached so it can rebuild itself after idle eviction
+    (PLAN-idle-unload.md).
     """
+    if config.backend == "piper":
+        # Local import: piper_backend imports TTSEngine from this module.
+        from .piper_backend import load_piper_model
+
+        return cast("TTSEngine", load_piper_model(config))
+
     try:
         # Optional dependency: only installed with `uv sync --extra engine`.
         # Dynamic import keeps optional deps out of static analysis paths.

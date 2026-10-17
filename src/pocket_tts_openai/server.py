@@ -12,16 +12,14 @@ from contextlib import asynccontextmanager
 from typing import cast
 
 import uvicorn
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from pathlib import Path
 
 from .config import Config
 from .engine import TTSEngine, load_engine
 from .errors import OpenAIError, invalid_api_key
 from .routes_speech import health, models, speech
 from .routes_voices import router as voices_router
-from .voices import KYUTAI_CATALOG
 
 logger = logging.getLogger(__name__)
 
@@ -120,11 +118,16 @@ def _idle_watchdog(app: FastAPI, config: Config, stop: threading.Event) -> None:
 
 
 def _load_engine_background(app: FastAPI, config: Config) -> None:
-    """Load pocket-tts off the event loop; /speech returns 503 until it lands."""
+    """Load the configured backend off the event loop; /speech 503s until it lands."""
     try:
         engine = load_engine(config)
         app.state.engine = engine
-        logger.info("engine ready: sample_rate=%d voices=%d", engine.sample_rate, len(KYUTAI_CATALOG))
+        logger.info(
+            "engine ready: backend=%s default_voice=%r sample_rate=%d",
+            engine.backend,
+            engine.default_voice,
+            engine.sample_rate,
+        )
         engine.warmup()
     except Exception:
         logger.exception("engine failed to load; /speech will keep returning 503")

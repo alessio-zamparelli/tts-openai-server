@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from .audio_codecs import MEDIA_TYPES, encode_pcm, encode_pcm_stream
 from .config import Config
 from .engine import RateLimited, TTSEngine, pcm_to_wav, streaming_wav_header
-from .errors import OpenAIError, invalid_request, rate_limited, unavailable
+from .errors import invalid_request, rate_limited, unavailable
 
 AudioFormat = Literal["wav", "pcm", "mp3", "opus", "aac", "flac"]
 
@@ -28,9 +28,13 @@ _CREATED = 1700000000  # fixed timestamp so responses are deterministic
 
 
 class SpeechRequest(BaseModel):
-    model: str = Field(default="tts-1", description="Model alias; all aliases map to pocket-tts.")
+    model: str = Field(default="tts-1", description="Model alias; all aliases map to the server's TTS backend.")
     input: str = Field(description="Text to synthesize.")
-    voice: str = Field(default="alloy", description="OpenAI voice alias or Kyutai voice name.")
+    voice: str | None = Field(
+        default=None,
+        description="OpenAI voice alias, backend voice name/id, custom voice, or model path. "
+        "Omitted -> server default (piper: it_IT-paola-medium; pocket: alloy).",
+    )
     response_format: AudioFormat = Field(default="wav")
     speed: float | None = Field(
         default=None, description="Accepted for compatibility but ignored (see README).")
@@ -58,9 +62,9 @@ def _stream_speech_pcm(engine: TTSEngine, text: str, voice: str):
         yield chunk
 
 
-def _stream_speech_wav(engine: TTSEngine, text: str, voice: str):
+def _stream_speech_wav(engine: TTSEngine, text: str, voice: str, sample_rate: int):
     """Yield a size-less WAV header then s16le PCM chunks."""
-    yield streaming_wav_header(engine.sample_rate)
+    yield streaming_wav_header(sample_rate)
     for chunk in engine.generate_pcm_stream(text, voice):
         yield chunk
 
@@ -78,13 +82,16 @@ def speech(req: SpeechRequest, request: Request) -> Response:
             f"supported formats: {', '.join(SUPPORTED_FORMATS)}.")
 
     engine = _engine_or_503(request)
+    # Omitted voice -> backend default (piper: it_IT-paola-medium, pocket: alloy).
     # Voice resolution (aliases, catalog, custom registry) happens inside the
     # engine; propagate unknown-voice as a 400.
 
+    voice = req.voice or engine.default_voice
+
     def _speech_error() -> Exception:
         return invalid_request(
-            f"Unknown voice {req.voice!r}. Use an OpenAI alias, a catalog voice, "
-            "a custom voice, an https:// URL or an hf:// reference."
+            f"Unknown voice {voice!r}. Use an OpenAI alias, a recognized "
+            f"{engine.model_name} voice, a custom voice, or a model path."
         )
 
     # streaming path: wav/pcm yield raw chunks; compressed formats are encoded
@@ -99,15 +106,20 @@ def speech(req: SpeechRequest, request: Request) -> Response:
         # generator-body error surfacing as a 500 from Starlette's streaming
         # worker. This also warms the cached model state for the generator body.
         try:
-            engine.voice_state(req.voice)
+            engine.voice_state(voice)
         except ValueError:
             raise _speech_error() from None
+        # Resolve the rate after the voice is loaded (Piper tiers differ).
+        sample_rate = engine.sample_rate_for(voice)
         if req.response_format in ("wav", "pcm"):
             filename = "speech.pcm" if req.response_format == "pcm" else "speech.wav"
             media_type = "audio/pcm" if req.response_format == "pcm" else "audio/wav"
-            gen = _stream_speech_pcm if req.response_format == "pcm" else _stream_speech_wav
+            if req.response_format == "pcm":
+                gen = _stream_speech_pcm(engine, req.input, voice)
+            else:
+                gen = _stream_speech_wav(engine, req.input, voice, sample_rate)
             return StreamingResponse(
-                gen(engine, req.input, req.voice),
+                gen,
                 media_type=media_type,
                 headers={"Content-Disposition": f"attachment; filename={filename}"},
             )
@@ -115,8 +127,8 @@ def speech(req: SpeechRequest, request: Request) -> Response:
         media_type = MEDIA_TYPES[req.response_format]
         return StreamingResponse(
             encode_pcm_stream(
-                engine.generate_pcm_stream(req.input, req.voice),
-                engine.sample_rate,
+                engine.generate_pcm_stream(req.input, voice),
+                sample_rate,
                 req.response_format,
             ),
             media_type=media_type,
@@ -124,18 +136,19 @@ def speech(req: SpeechRequest, request: Request) -> Response:
         )
 
     try:
-        pcm = engine.generate_pcm(req.input, req.voice)
+        pcm = engine.generate_pcm(req.input, voice)
     except ValueError:
         raise _speech_error() from None
     except RateLimited as exc:
         raise rate_limited(str(exc)) from None
+    sample_rate = engine.sample_rate_for(voice)
     if req.response_format == "pcm":
         body, filename, media_type = pcm, "speech.pcm", "audio/pcm"
     elif req.response_format == "wav":
-        body, filename, media_type = pcm_to_wav(pcm, engine.sample_rate), "speech.wav", "audio/wav"
+        body, filename, media_type = pcm_to_wav(pcm, sample_rate), "speech.wav", "audio/wav"
     else:
         try:
-            body = encode_pcm(pcm, engine.sample_rate, req.response_format)
+            body = encode_pcm(pcm, sample_rate, req.response_format)
         except RuntimeError as exc:
             raise invalid_request(str(exc)) from exc
         filename, media_type = f"speech.{req.response_format}", MEDIA_TYPES[req.response_format]
@@ -146,12 +159,14 @@ def speech(req: SpeechRequest, request: Request) -> Response:
     )
 
 
-def models() -> dict:
-    """List available models: every alias maps to the single pocket-tts model."""
+def models(request: Request) -> dict:
+    """List available models: every alias maps to the server's configured backend."""
+    engine = getattr(request.app.state, "engine", None)
+    owner = engine.model_name if engine is not None else "tts"
     return {
         "object": "list",
         "data": [
-            {"id": alias, "object": "model", "created": _CREATED, "owned_by": "pocket-tts"}
+            {"id": alias, "object": "model", "created": _CREATED, "owned_by": owner}
             for alias in MODEL_ALIASES
         ],
     }
@@ -164,11 +179,18 @@ def health(request: Request) -> dict:
     """
     engine = getattr(request.app.state, "engine", None)
     if engine is None:
-        return {"status": "loading", "model": "pocket-tts"}
+        config: Config = request.app.state.config
+        return {
+            "status": "loading",
+            "model": "pocket-tts" if config.backend == "pocket" else config.backend,
+        }
     stats = engine.stats
     return {
         "status": "ok",
-        "model": "pocket-tts",
+        "model": engine.model_name,
+        "backend": engine.backend,
+        "default_voice": engine.default_voice,
+        "sample_rate": engine.sample_rate,
         "language": engine.language,
         "loaded": engine.loaded,
         "idle_unload_s": engine._config.idle_unload_s,

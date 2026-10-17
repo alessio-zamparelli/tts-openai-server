@@ -1,7 +1,7 @@
 [project]
 name = "pocket-tts-openai"
 version = "0.1.0"
-description = "OpenAI-compatible TTS server (POST /v1/audio/speech) powered by Kyutai's pocket-tts"
+description = "OpenAI-compatible TTS server (POST /v1/audio/speech) powered by Piper (default) or Kyutai's pocket-tts"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -18,8 +18,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Actual TTS engine. On Linux prefer the CPU-only torch build to avoid ~3 GB of
-# CUDA wheels:  uv sync --extra engine --index https://download.pytorch.org/whl/cpu
+# Default TTS engine (backend=piper). GPL-3.0-or-later; see NOTICE.
+piper = ["piper-tts>=1.8,<2"]
+# Legacy backend (POCKET_TTS_BACKEND=pocket). On Linux prefer the CPU-only torch
+# build to avoid ~3 GB of CUDA wheels:
+#   uv sync --extra engine --index https://download.pytorch.org/whl/cpu
 engine = ["pocket-tts>=0.1", "torch>=2.0"]
 
 [dependency-groups]
@@ -41,7 +44,7 @@ packages = ["src/pocket_tts_openai"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
-markers = ["e2e: end-to-end tests against the real pocket-tts model (run with POCKET_TTS_E2E=1)"]
+markers = ["e2e: end-to-end tests against a real backend (PIPER_E2E=1 or POCKET_TTS_E2E=1)"]
 
 [tool.pyright]
 venvPath = "."
