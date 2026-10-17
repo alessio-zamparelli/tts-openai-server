@@ -212,9 +212,45 @@ eviction (previous section) an idle process holds ~0 MB of model.
 | `POCKET_TTS_API_KEY` | — | if set, `Bearer <key>` required on `/v1/*` |
 | `POCKET_TTS_CACHE_DIR` | `~/.cache/pocket_tts` | pocket voice registry / model cache base |
 | `POCKET_TTS_MAX_UPLOAD_MB` | `25` | max cloned-voice upload size |
+| `POCKET_TTS_LANGUAGE` | `english` | pocket-tts model language (`italian_24l`, `french_24l`, …). Piper ignores it and takes the language from the voice id (`it_IT-…` → Italian) |
+| `POCKET_TTS_QUANTIZE` | `false` | pocket-tts only: load transformer weights int8 (≈62% less RSS, ~27% faster; requires AVX2 — see [Model size & RAM](#model-size--ram)) |
 
-Pocket-only: `POCKET_TTS_LANGUAGE`, `POCKET_TTS_QUANTIZE` (see above);
-Piper takes its language from the voice id (`it_IT-…` → Italian).
+### Env template (all optional, commented)
+
+Uncomment the knobs you need; values are examples (defaults are in the table above).
+
+```sh
+# --- server ---
+# POCKET_TTS_BACKEND=piper
+# POCKET_TTS_HOST=127.0.0.1
+# POCKET_TTS_PORT=8000
+# POCKET_TTS_API_KEY=change-me
+# --- backend / voices ---
+# POCKET_TTS_DEFAULT_VOICE=it_IT-paola-medium
+# POCKET_TTS_VOICE_MAP=alloy=en_US-lessac-medium
+# POCKET_TTS_WARMUP_VOICES=jarvis1
+# POCKET_TTS_LANGUAGE=italian_24l
+# POCKET_TTS_QUANTIZE=1
+# POCKET_TTS_MAX_CACHED_VOICES=2
+# POCKET_TTS_PIPER_VOICE_DIR=/data/cache/piper
+# POCKET_TTS_PIPER_AUTO_DOWNLOAD=true
+# --- cache / uploads ---
+# POCKET_TTS_CACHE_DIR=/data/cache
+# POCKET_TTS_MAX_UPLOAD_MB=25
+# --- lifecycle / load shedding ---
+# POCKET_TTS_IDLE_UNLOAD_S=300
+# POCKET_TTS_IDLE_POLL_S=30
+# POCKET_TTS_MAX_WAITING=0
+# POCKET_TTS_QUEUE_TIMEOUT_S=0
+# --- external ---
+# HF_HOME=/data/hf
+# HF_TOKEN=hf_...
+# OMP_NUM_THREADS=4
+```
+
+Piper takes its language from the voice id (`it_IT-…` → Italian); the
+pocket-only knobs above (`POCKET_TTS_LANGUAGE`, `POCKET_TTS_QUANTIZE`) are
+ignored on the default backend.
 
 ## Container (Docker)
 
