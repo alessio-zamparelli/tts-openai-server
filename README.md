@@ -309,6 +309,10 @@ Measured with `benchmarks/bench_backends.py` on an **Intel N150 (4 threads),
 - Reproduce with:
   `uv sync --extra piper --extra engine && uv run python benchmarks/bench_backends.py --backends piper,pocket --runs 5`.
   Numbers vary with CPU and `OMP_NUM_THREADS`.
+- End-to-end TTS→STT (Piper → Italian faster-whisper) is measured by
+  `benchmarks/e2e_tts_stt.py`; setup and latest results are in
+  [`benchmarks/e2e_tts_stt.md`](benchmarks/e2e_tts_stt.md). It needs a sibling
+  `stt-openai-server` checkout and writes results to gitignored `artifacts/`.
 
 ## Known limitations / risks
 
