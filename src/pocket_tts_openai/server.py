@@ -7,6 +7,7 @@ fake engine, production loads pocket-tts in a background thread on startup.
 from __future__ import annotations
 
 import logging
+import sys
 import threading
 from contextlib import asynccontextmanager
 from typing import cast
@@ -133,7 +134,41 @@ def _load_engine_background(app: FastAPI, config: Config) -> None:
         logger.exception("engine failed to load; /speech will keep returning 503")
 
 
+def _healthcheck() -> int:
+    """One-shot probe used by the container HEALTHCHECK."""
+    import http.client
+
+    try:
+        config = Config.from_env()
+    except Exception as exc:  # invalid POCKET_TTS_* config: server would not boot either
+        print(f"healthcheck: invalid config ({type(exc).__name__}: {exc})", file=sys.stderr)
+        return 1
+
+    host = "127.0.0.1" if config.host in ("", "0.0.0.0", "::") else config.host
+    conn = None
+    try:
+        # http.client bypasses HTTP(S)_PROXY from the container environment;
+        # urllib would route a loopback probe through a proxy when one is set.
+        conn = http.client.HTTPConnection(host, config.port, timeout=4)
+        conn.request("GET", "/health")
+        response = conn.getresponse()
+        response.read()
+        return 0 if response.status == 200 else 1
+    except Exception as exc:  # ConnectionRefusedError while uvicorn is not bound yet
+        print(
+            f"healthcheck: {host}:{config.port} not ready "
+            f"({type(exc).__name__}: {exc})",
+            file=sys.stderr,
+        )
+        return 1
+    finally:
+        if conn is not None:
+            conn.close()
+
+
 def main() -> None:
+    if "--healthcheck" in sys.argv[1:]:
+        raise SystemExit(_healthcheck())
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     config = Config.from_env()
     app = create_app(config)

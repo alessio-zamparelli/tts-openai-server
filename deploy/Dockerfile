@@ -117,7 +117,9 @@ VOLUME ["/data"]
 USER tts
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD ["python", "-c", "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).read()"]
+# The HTTP server binds immediately; the backend engine loads in a background
+# thread. The probe honors POCKET_TTS_HOST/PORT and bypasses HTTP proxy env vars.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD ["pocket-tts-openai", "--healthcheck"]
 
 ENTRYPOINT ["pocket-tts-openai"]

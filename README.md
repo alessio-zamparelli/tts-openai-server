@@ -308,6 +308,10 @@ Or `docker compose up -d --build` (see `docker-compose.yml`).
   (Debian's build ships the libmp3lame + libopus encoders).
 - The bind host defaults to `0.0.0.0` inside the container (port `8000`);
   override with `POCKET_TTS_HOST`/`POCKET_TTS_PORT`.
+- **Healthcheck**: built-in `HEALTHCHECK` runs `pocket-tts-openai --healthcheck`
+  every 30 s. It honors `POCKET_TTS_PORT` and bypasses `HTTP(S)_PROXY` env vars.
+  The HTTP server binds before the backend engine finishes loading, so
+  `/health` reports `status: "loading"` until the engine is ready.
 
 Image is published to **GHCR** (`ghcr.io/<repo>`) by the
 `.github/workflows/docker-publish.yml` pipeline: tests gate the build, then
