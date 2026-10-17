@@ -17,10 +17,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Pin the runner image: ubuntu-latest migrates to Ubuntu 26.04 starting
+  # 2026-10-19. Stay on 24.04 until the image change is validated, so builds
+  # do not pick up a new Docker/OS stack implicitly.
   # Fast gate (no engine/torch needed — tests inject a fake model): only
   # publish a container if the suite still passes.
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
@@ -40,7 +43,7 @@ jobs:
         run: uv run pytest -q
 
   build-and-push:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: test
     permissions:
       contents: read
