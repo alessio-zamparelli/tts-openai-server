@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import struct
 
-from pocket_tts_openai.voices import PIPER_DEFAULT_VOICE
+from tts_openai.voices import PIPER_DEFAULT_VOICE
 
 
 def _wav_rate(body: bytes) -> int:

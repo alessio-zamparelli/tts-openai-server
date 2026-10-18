@@ -1,7 +1,7 @@
 """ffmpeg-backed encoding for the compressed /v1/audio/speech formats.
 
 The engine produces raw mono s16le PCM at 24 kHz; ``wav``/``pcm`` are handled
-by the stdlib in :mod:`pocket_tts_openai.engine`. The lossy/lossless compressed
+by the stdlib in :mod:`tts_openai.engine`. The lossy/lossless compressed
 formats (mp3/opus/aac/flac) are encoded here by piping that PCM through ffmpeg --
 whole-file via :func:`encode_pcm` (``stream:false``) or live chunk-by-chunk via
 :func:`encode_pcm_stream` (``stream:true``).

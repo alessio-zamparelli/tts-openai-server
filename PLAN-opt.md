@@ -274,9 +274,9 @@ finally:
 
 | File | Change |
 | --- | --- |
-| `src/pocket_tts_openai/engine.py` | `to_pcm16` in-place ops (+contract docstring); `clone_voice` lock scope (+docstring) |
-| `src/pocket_tts_openai/audio_codecs.py` | add `_ffmpeg_args`, `encode_pcm_stream` (pump + stderr threads, `-flush_packets 1`); keep `encode_pcm` |
-| `src/pocket_tts_openai/routes_speech.py` | compressed `stream:true` → `StreamingResponse(encode_pcm_stream(...))`; update `stream` Field doc; extend stream-branch guard |
+| `src/tts_openai/engine.py` | `to_pcm16` in-place ops (+contract docstring); `clone_voice` lock scope (+docstring) |
+| `src/tts_openai/audio_codecs.py` | add `_ffmpeg_args`, `encode_pcm_stream` (pump + stderr threads, `-flush_packets 1`); keep `encode_pcm` |
+| `src/tts_openai/routes_speech.py` | compressed `stream:true` → `StreamingResponse(encode_pcm_stream(...))`; update `stream` Field doc; extend stream-branch guard |
 | `tests/test_engine.py` | `to_pcm16` parity tests; clone lock-scope + concurrency tests |
 | `tests/test_api_contract.py` (or new `test_audio_codecs.py`) | `encode_pcm_stream` ≡ `encode_pcm`; abandonment/thread hygiene; error path |
 | `tests/test_streaming.py` | replace `test_compressed_format_ignores_stream`; add streamed-compressed 400 / disconnect / regression cases |

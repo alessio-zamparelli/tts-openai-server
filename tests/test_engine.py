@@ -9,9 +9,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from pocket_tts_openai.config import Config
-from pocket_tts_openai.engine import RateLimited, TTSEngine, pcm_to_wav, to_pcm16
-from pocket_tts_openai.voices import DEFAULT_VOICE_ALIASES, resolve_voice
+from tts_openai.config import Config
+from tts_openai.engine import RateLimited, TTSEngine, pcm_to_wav, to_pcm16
+from tts_openai.voices import DEFAULT_VOICE_ALIASES, resolve_voice
 
 
 def test_generation_is_serialized(engine, fake_model):
@@ -37,7 +37,7 @@ def test_voice_state_cached_across_requests(engine, fake_model):
 
 
 def test_voice_lru_eviction(fake_model):
-    from pocket_tts_openai.config import Config
+    from tts_openai.config import Config
 
     engine = TTSEngine(fake_model, config=Config(backend="pocket", max_cached_voices=2))
     engine.generate_pcm("a", "alloy")  # alba

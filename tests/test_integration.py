@@ -56,8 +56,8 @@ def live_server() -> Iterator[str]:
 
     import uvicorn
 
-    from pocket_tts_openai.config import Config
-    from pocket_tts_openai.server import create_app
+    from tts_openai.config import Config
+    from tts_openai.server import create_app
 
     cfg = Config(host="127.0.0.1", port=0, idle_unload_s=0)  # keep model resident
     app = create_app(cfg)  # engine=None -> background load thread

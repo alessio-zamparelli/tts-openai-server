@@ -54,8 +54,8 @@ def _percentile(values: list[float], q: float) -> float:
 
 
 def _run_worker(args: argparse.Namespace) -> dict:
-    from pocket_tts_openai.config import Config
-    from pocket_tts_openai.engine import _rss_mb, load_engine
+    from tts_openai.config import Config
+    from tts_openai.engine import _rss_mb, load_engine
 
     voice = args.piper_voice if args.backend == "piper" else args.pocket_voice
     idle_rss = _rss_mb()

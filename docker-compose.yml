@@ -1,7 +1,7 @@
 # Local development / self-host convenience wrapper around deploy/Dockerfile.
 # Not needed for GitHub Actions (GHCR publishes from the workflow directly).
 # Usage: docker compose up -d --build   (then POST to http://localhost:8080)
-name: pocket-tts-openai
+name: tts-openai
 
 services:
   tts:
@@ -11,7 +11,7 @@ services:
       args:
         # 1 also installs pocket-tts + CPU torch (~1 GB image) and seeds jarvis1.
         WITH_POCKET: "0"
-    image: pocket-tts-openai:local
+    image: tts-openai:local
     ports:
       - "8080:8000"
     environment:
@@ -64,7 +64,7 @@ services:
     restart: unless-stopped
     healthcheck:
       # --healthcheck honors POCKET_TTS_PORT and bypasses HTTP proxy env vars.
-      test: ["CMD", "pocket-tts-openai", "--healthcheck"]
+      test: ["CMD", "tts-openai", "--healthcheck"]
       interval: 30s
       timeout: 5s
       # The engine loads in a background thread, so this only covers cold

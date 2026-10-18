@@ -12,9 +12,9 @@ import threading
 
 from fastapi.testclient import TestClient
 
-from pocket_tts_openai.config import Config
-from pocket_tts_openai.engine import TTSModelLike, TTSEngine
-from pocket_tts_openai.server import create_app
+from tts_openai.config import Config
+from tts_openai.engine import TTSModelLike, TTSEngine
+from tts_openai.server import create_app
 from tests.conftest import FakeTTSModel, fake_export_state
 
 DEFAULT_IDLE = Config().idle_unload_s

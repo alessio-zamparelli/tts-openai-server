@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #
-# pocket-tts-openai — OpenAI-compatible TTS server (CPU-only).
+# tts-openai — OpenAI-compatible TTS server (CPU-only).
 #
 # Built with uv following the official integration guide:
 #   https://docs.astral.sh/uv/guides/integration/docker/
@@ -11,8 +11,8 @@
 # CPU-only by design: `torch` resolves from the PyTorch CPU wheel index via
 # uv.lock (see [tool.uv.sources] in pyproject.toml) — no CUDA/NVIDIA layers.
 #
-# Build:    docker build -f deploy/Dockerfile -t pocket-tts-openai .
-# Run:      docker run --rm -p 8080:8000 -v tts-data:/data pocket-tts-openai
+# Build:    docker build -f deploy/Dockerfile -t tts-openai .
+# Run:      docker run --rm -p 8080:8000 -v tts-data:/data tts-openai
 # Pocket:   docker build -f deploy/Dockerfile --build-arg WITH_POCKET=1 -t tts-pocket .
 
 ###############################################################################
@@ -24,7 +24,7 @@ FROM python:3.14-slim AS builder
 ARG WITH_POCKET=0
 
 # Pin uv to the exact version used to (re)generate uv.lock.
-COPY --from=ghcr.io/astral-sh/uv:0.12.13 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.1 /uv /uvx /bin/
 
 # Use the system Python already present in the slim image (3.14).
 ENV UV_PYTHON_DOWNLOADS=0 \
@@ -120,6 +120,6 @@ EXPOSE 8000
 # The HTTP server binds immediately; the backend engine loads in a background
 # thread. The probe honors POCKET_TTS_HOST/PORT and bypasses HTTP proxy env vars.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-    CMD ["pocket-tts-openai", "--healthcheck"]
+    CMD ["tts-openai", "--healthcheck"]
 
-ENTRYPOINT ["pocket-tts-openai"]
+ENTRYPOINT ["tts-openai"]

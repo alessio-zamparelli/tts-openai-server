@@ -150,7 +150,7 @@ Rimuove la voce custom: alias dal registro + file `.safetensors`. 404 se inesist
 Flusso di onboarding senza sorprese:
 
 1. **All'avvio** (`load_model()`): se `~/.cache/pocket_tts` non ha i pesi, il download
-   avviene una volta (su HF se path `hf://`). Comando dedicato `pocket-tts-openai warmup`
+   avviene una volta (su HF se path `hf://`). Comando dedicato `tts-openai warmup`
    che: carica il modello, scarica+codifica le voci della mappa e le esporta in
    `.safetensors`, genera un testo di prova.
 2. **In build Docker**: il warmup viene eseguito in fase di build con i modelli/voci
@@ -184,12 +184,12 @@ Licenze per-voce riportate in `/v1/voices` e README (fonte: `kyutai/tts-voices` 
 ## 6. Struttura progetto
 
 ```
-pocket-tts-openai/
+tts-openai/
 ├── pyproject.toml            # uv/pip; extra-index CPU per torch su Linux
 ├── README.md                 # IT/EN
-├── Dockerfile                # python:3.12-slim + ffmpeg; warmup in build
+├── Dockerfile                # python:3.14-slim + ffmpeg; warmup in build
 ├── docker-compose.yml
-├── src/pocket_tts_openai/
+├── src/tts_openai/
 │   ├── server.py             # app factory + uvicorn entrypoint
 │   ├── routes_speech.py      # /v1/audio/speech, /v1/models, /health
 │   ├── routes_voices.py      # GET/POST/DELETE /v1/voices (cloning + catalogo)
@@ -220,7 +220,7 @@ pocket-tts-openai/
    con persistenza in `voices.json`).
 4. **[x] M4 — Streaming**: chunked transfer per `wav`/`pcm` via `generate_audio_stream`
    (primo chunk ~200 ms), opzione `stream` nel body; formati compressi bufferizzati.
-5. **M5 — Packaging** *(parziale)*: ✅ Dockerfile CPU-only multi-stage (`deploy/Dockerfile`, uv guide, python:3.14-slim, non-root, volume `/data` → `HF_HOME` + registry voci), ✅ `.dockerignore`, ✅ `docker-compose.yml`, ✅ pipeline GHCR `.github/workflows/docker-publish.yml` (test gate + buildx + attestazioni). *Rimane:* warmup in build, esempi SDK openai, README IT/EN, `pocket-tts-openai warmup` CLI.
+5. **M5 — Packaging** *(parziale)*: ✅ Dockerfile CPU-only multi-stage (`deploy/Dockerfile`, uv guide, python:3.14-slim, non-root, volume `/data` → `HF_HOME` + registry voci), ✅ `.dockerignore`, ✅ `docker-compose.yml`, ✅ pipeline GHCR `.github/workflows/docker-publish.yml` (test gate + buildx + attestazioni). *Rimane:* warmup in build, esempi SDK openai, README IT/EN, `tts-openai warmup` CLI.
 6. **M6 — Rifiniture**: metriche `/health` (RTF, profondità coda), quantize opzionale,
    benchmark latenza, supporto `italian_24l` testato.
 

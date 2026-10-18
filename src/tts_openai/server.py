@@ -68,7 +68,7 @@ def create_app(config: Config | None = None, engine: TTSEngine | None = None) ->
                 else:
                     logger.info("shutting down: engine left resident (not owned by this server)")
 
-    app = FastAPI(title="pocket-tts-openai", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="tts-openai", version="0.1.0", lifespan=lifespan)
     app.state.config = config
 
     def _openai_error_handler(request: Request, exc: Exception) -> JSONResponse:

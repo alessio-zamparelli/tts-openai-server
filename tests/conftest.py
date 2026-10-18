@@ -9,11 +9,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from pocket_tts_openai.config import Config
-from pocket_tts_openai.engine import TTSEngine
-from pocket_tts_openai.piper_backend import PiperTTSModel
-from pocket_tts_openai.server import create_app
-from pocket_tts_openai.voice_registry import VoiceRegistry
+from tts_openai.config import Config
+from tts_openai.engine import TTSEngine
+from tts_openai.piper_backend import PiperTTSModel
+from tts_openai.server import create_app
+from tts_openai.voice_registry import VoiceRegistry
 
 
 def fake_export_state(state: object, dest: str | Path) -> None:

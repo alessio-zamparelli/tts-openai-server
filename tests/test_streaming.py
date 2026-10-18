@@ -10,7 +10,7 @@ from threading import Thread
 import pytest
 from fastapi.testclient import TestClient
 
-from pocket_tts_openai.server import create_app
+from tts_openai.server import create_app
 
 S16LE = struct.Struct("<h")
 
@@ -104,7 +104,7 @@ def test_compressed_stream_true_routes_through_streaming(client, monkeypatch):
     StreamingResponse. Uses a fake encoder so mock CI (no ffmpeg) still covers
     the wiring; the real-ffmpeg byte-parity is asserted by
     test_compressed_stream_real_output_matches_buffered when ffmpeg exists."""
-    import pocket_tts_openai.routes_speech as rs
+    import tts_openai.routes_speech as rs
 
     calls: list[tuple[int, str]] = []
 
@@ -130,7 +130,7 @@ def test_compressed_stream_real_output_matches_buffered(client, monkeypatch):
     """End-to-end route+ffmpeg: the streamed compressed output is byte-identical
     to the buffered (stream:false) response, and the server iterated the
     streaming generator more than once (not a single buffered blob)."""
-    import pocket_tts_openai.routes_speech as rs
+    import tts_openai.routes_speech as rs
 
     r_static = client.post(
         "/v1/audio/speech", json={"input": "hi", "response_format": "mp3"}

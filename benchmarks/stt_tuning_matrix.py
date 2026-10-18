@@ -130,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
             "POCKET_TTS_IDLE_UNLOAD_S": "0",
         }
     )
-    tts_bin = tts_repo / ".venv/bin/pocket-tts-openai"
+    tts_bin = tts_repo / ".venv/bin/tts-openai"
     tts_server = bench._start_server(
         name="tts",
         cmd=[str(tts_bin)],

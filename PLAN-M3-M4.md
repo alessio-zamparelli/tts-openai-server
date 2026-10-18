@@ -29,7 +29,7 @@
 
 ## 1. M3 — Voices (`GET/POST/DELETE /v1/voices`)
 
-### 1.1 New file `src/pocket_tts_openai/routes_voices.py`
+### 1.1 New file `src/tts_openai/routes_voices.py`
 
 Three route functions registered in `server.py::create_app`:
 
@@ -39,7 +39,7 @@ app.post("/v1/voices")(create_voice)          # multipart/form-data
 app.delete("/v1/voices/{name}")(delete_voice)
 ```
 
-### 1.2 Custom-voice registry (new file `src/pocket_tts_openai/voice_registry.py`)
+### 1.2 Custom-voice registry (new file `src/tts_openai/voice_registry.py`)
 
 - Directory: `<cache_dir>/voices/` where `cache_dir` defaults to
   `~/.cache/pocket_tts` (mirrors pocket-tts). Make it overridable via
@@ -126,7 +126,7 @@ In `server.py::_load_engine_background`, after `load_engine(config)`:
 for each voice in `config.warmup_voices` → `engine.voice_state(v)`,
 catching and logging per-voice failures (startup must not die from one bad
 voice). Same loop serves both prefetch-at-boot and the future
-`pocket-tts-openai warmup` CLI (M5).
+`tts-openai warmup` CLI (M5).
 
 ### 1.7 Tests (`tests/test_routes_voices.py`, fake engine)
 

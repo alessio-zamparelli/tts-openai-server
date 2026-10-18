@@ -17,7 +17,7 @@ from typing import Generator, cast
 import numpy as np
 import pytest
 
-from pocket_tts_openai.audio_codecs import encode_pcm, encode_pcm_stream
+from tts_openai.audio_codecs import encode_pcm, encode_pcm_stream
 
 # Collection-safe: `shutil.which` returns None instead of raising when ffmpeg is
 # absent (the mock CI env has no ffmpeg), so the whole module skips cleanly.
@@ -161,7 +161,7 @@ def test_abandonment_closes_source_and_reaps_threads():
 
 @ffmpeg_available
 def test_missing_ffmpeg_raises_client_clear_error(monkeypatch):
-    import pocket_tts_openai.audio_codecs as ac
+    import tts_openai.audio_codecs as ac
 
     monkeypatch.setattr(ac, "ffmpeg_binary", lambda: None)
     with pytest.raises(RuntimeError, match="ffmpeg"):
@@ -171,7 +171,7 @@ def test_missing_ffmpeg_raises_client_clear_error(monkeypatch):
 def test_unknown_format_rejected_before_spawning(monkeypatch):
     """An unsupported format must be rejected (KeyError) before any subprocess is
     spawned. Stub ffmpeg_binary so it runs even on runners without ffmpeg."""
-    import pocket_tts_openai.audio_codecs as ac
+    import tts_openai.audio_codecs as ac
 
     monkeypatch.setattr(ac, "ffmpeg_binary", lambda: "/usr/bin/ffmpeg")
     with pytest.raises(KeyError):

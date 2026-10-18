@@ -547,7 +547,7 @@ def run_model(
                     "POCKET_TTS_IDLE_UNLOAD_S": "0",
                 }
             )
-            binary = tts_repo / ".venv/bin/pocket-tts-openai"
+            binary = tts_repo / ".venv/bin/tts-openai"
             if not binary.exists():
                 raise SystemExit(f"missing TTS entry point: {binary}")
             tts_server = _start_server(

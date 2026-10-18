@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from pocket_tts_openai.voice_registry import DEFAULT_CACHE_DIR, CustomVoice, VoiceRegistry, validate_voice_name
+from tts_openai.voice_registry import DEFAULT_CACHE_DIR, CustomVoice, VoiceRegistry, validate_voice_name
 
 
 def _registry(tmp_path: Path) -> VoiceRegistry:

@@ -85,7 +85,7 @@ def test_invalid_format_422(client):
 def _stub_encode(monkeypatch) -> None:
     """Route tests never depend on ffmpeg: the codec is stubbed here (the real
     ffmpeg path is verified end-to-end against the live API)."""
-    import pocket_tts_openai.routes_speech as rs
+    import tts_openai.routes_speech as rs
 
     def fake_encode(pcm: bytes, sample_rate: int, fmt: str) -> bytes:
         return b"ENCODED:" + fmt.encode()
@@ -115,7 +115,7 @@ def test_speech_compressed_formats_via_ffmpeg(client, monkeypatch):
 
 def test_compressed_format_missing_ffmpeg_400(client, monkeypatch):
     """Without ffmpeg the compressed formats surface a clear 400, not a 500."""
-    import pocket_tts_openai.audio_codecs as ac
+    import tts_openai.audio_codecs as ac
 
     monkeypatch.setattr(ac, "ffmpeg_binary", lambda: None)
     r = client.post(
@@ -144,8 +144,8 @@ def test_speed_and_instructions_accepted_but_ignored(client, fake_model):
 def test_auth_required_when_configured():
     from fastapi.testclient import TestClient
 
-    from pocket_tts_openai.config import Config
-    from pocket_tts_openai.server import create_app
+    from tts_openai.config import Config
+    from tts_openai.server import create_app
 
     config = Config(api_key="sk-secret")
     client = TestClient(create_app(config, engine=None))
@@ -168,8 +168,8 @@ def test_503_while_engine_loading():
     """engine=None and pocket-tts absent: background load fails, speech stays 503."""
     from fastapi.testclient import TestClient
 
-    from pocket_tts_openai.config import Config
-    from pocket_tts_openai.server import create_app
+    from tts_openai.config import Config
+    from tts_openai.server import create_app
 
     app = create_app(Config(), engine=None)
     client = TestClient(app)

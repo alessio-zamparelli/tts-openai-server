@@ -11,12 +11,12 @@ import logging
 
 from fastapi.testclient import TestClient
 
-from pocket_tts_openai.config import Config
-from pocket_tts_openai.engine import TTSEngine, _rss_mb
-from pocket_tts_openai.server import create_app
+from tts_openai.config import Config
+from tts_openai.engine import TTSEngine, _rss_mb
+from tts_openai.server import create_app
 from tests.conftest import FakeTTSModel
 
-ENGINE_LOGGER = "pocket_tts_openai.engine"
+ENGINE_LOGGER = "tts_openai.engine"
 
 
 def _messages(caplog, needle: str) -> list[str]:
@@ -89,7 +89,7 @@ def test_shutdown_unloads_owned_model(caplog):
     engine = _engine()
     engine._auto_loaded = True  # simulate a production (background-loaded) engine
     app = create_app(Config(idle_unload_s=0), engine)
-    with caplog.at_level(logging.INFO, logger="pocket_tts_openai"):
+    with caplog.at_level(logging.INFO, logger="tts_openai"):
         with TestClient(app) as client:
             assert engine.loaded is True
             assert client.get("/health").status_code == 200
@@ -108,7 +108,7 @@ def test_shutdown_leaves_injected_engine_resident(caplog):
     disconnect test does), but the transition is still logged."""
     engine = _engine()
     app = create_app(Config(idle_unload_s=0), engine)
-    with caplog.at_level(logging.INFO, logger="pocket_tts_openai"):
+    with caplog.at_level(logging.INFO, logger="tts_openai"):
         with TestClient(app):
             assert engine.loaded is True
         assert engine._model is not None  # left resident
@@ -124,7 +124,7 @@ def test_shutdown_idempotent_when_already_unloaded(caplog):
     engine._auto_loaded = True
     engine.unload(reason="premature")  # logged before the capture window
     app = create_app(Config(idle_unload_s=0), engine)
-    with caplog.at_level(logging.INFO, logger="pocket_tts_openai"):
+    with caplog.at_level(logging.INFO, logger="tts_openai"):
         with TestClient(app):
             assert engine.loaded is False
         # shutdown calls unload() but it no-ops on an absent model: the log shows

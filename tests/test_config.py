@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from pocket_tts_openai.config import Config
+from tts_openai.config import Config
 
 
 def test_load_shedding_envs():

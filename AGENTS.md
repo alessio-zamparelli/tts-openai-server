@@ -2,7 +2,7 @@
 
 OpenAI-compatible TTS server (`POST /v1/audio/speech`) over **Piper** (default)
 or Kyutai **pocket-tts** (optional backend). Installable package
-`pocket_tts_openai` lives in `src/`. API usage is covered in `README.md`;
+`tts_openai` lives in `src/`. API usage is covered in `README.md`;
 architecture rationale lives in the Italian `PLAN*.md` docs.
 
 ## Commands
@@ -13,8 +13,8 @@ uv run pytest           # full suite (addopts=-q already set)
 uv run pytest tests/test_engine.py::test_generation_is_serialized   # one test
 uv sync --extra piper   # + Piper (default backend); needed to actually synthesize
 uv sync --extra engine  # + pocket-tts and CPU torch (large), optional backend
-uv run pocket-tts-openai            # serve on 127.0.0.1:8000 with Piper/Paola
-POCKET_TTS_BACKEND=pocket uv run pocket-tts-openai   # legacy backend
+uv run tts-openai            # serve on 127.0.0.1:8000 with Piper/Paola
+POCKET_TTS_BACKEND=pocket uv run tts-openai   # legacy backend
 ```
 
 - Real-model e2e tests are opt-in: `PIPER_E2E=1 uv run pytest -m e2e -v`
@@ -24,7 +24,7 @@ POCKET_TTS_BACKEND=pocket uv run pocket-tts-openai   # legacy backend
 - No lint/format/typecheck tooling is configured. `pyrightconfig.json` exists but nothing
   runs pyright. CI (`.github/workflows/docker-publish.yml`) gates the GHCR publish on
   `uv sync --locked` + `uv run pytest -q`.
-- `uv.lock` is regenerated with **uv 0.12.13** (pinned in `deploy/Dockerfile`); use that
+- `uv.lock` is regenerated with **uv 0.13.1** (pinned in `deploy/Dockerfile`); use that
   version, and build the image with `--locked`.
 - `mp3`/`opus`/`aac`/`flac` require **ffmpeg** on PATH (wav/pcm are stdlib-only); the
   affected tests skip cleanly when ffmpeg is absent. The Docker image ships ffmpeg.
@@ -79,5 +79,5 @@ POCKET_TTS_BACKEND=pocket uv run pocket-tts-openai   # legacy backend
   24 kHz are pocket-specific.
 - Default Docker build installs Piper only (`WITH_POCKET=0`); `uv sync --locked` in CI
   must remain valid for both extras.
-- Local dev uses `.python-version` (3.12); the Docker image is `python:3.14-slim`;
-  `requires-python` is `>=3.10`.
+- Local dev uses `.python-version` (3.14), matching the Docker image
+  (`python:3.14-slim`); `requires-python` is `>=3.10`.
