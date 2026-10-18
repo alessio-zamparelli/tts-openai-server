@@ -26,8 +26,10 @@ Takeaways:
 - Matching `cpu_threads` to the 3-CPU quota did **not** improve throughput.
 - Beam 1, or beam 2 + batch 4, is ~18% faster on the sentence suite, but beam
   1/2 hurt short-clip accuracy and produced a repetition loop on the long story.
-- `beam5 + batch4` is the best speed/accuracy compromise: ~11% faster than
-  baseline with the lowest sentence WER in the faster half of the table.
+- On this synthetic suite, `beam5 + batch4` is the best speed/accuracy
+  compromise: ~11% faster than baseline with the lowest sentence WER in the
+  faster half of the table. The real-audio FLEURS result below shows that
+  batch 4 can regress WER on long clips, so treat this as synthetic-only.
 - VAD's 0.705 vs 0.764 is within run-to-run noise; on clean TTS it is not a
   clear win and adds a VAD pass.
 - Short-clip latency is ~5 s on `small` regardless of config; tuning cannot
@@ -46,6 +48,7 @@ Caveat: 2 runs and a noisy/shared host. Treat differences under ~10% as noise.
 | `small` | 1.52 s | 0.418 | 7.0% | 7.6% | 656 MB |
 | `medium` | 3.62 s | 1.052 | 4.8% | 5.8% | 1381 MB |
 | `large-v3-turbo` | 4.29 s | 1.342 | **4.2%** | 4.5% | 1167 MB |
+| `small` + batch 4 | 2.63 s | **0.352** | 9.3% | 8.5% | 677 MB |
 
 Takeaways:
 
@@ -54,6 +57,10 @@ Takeaways:
 - `base` is ~2.6× faster than `small` but costs +6 pp WER.
 - `medium` and turbo are accuracy-first; both are around or slower than
   real time on this CPU.
+- **Batch 4 is a throughput tool, not a free win.** On real audio it cut
+  `small` RTF 0.418→0.352, but the 52.9 s clip went 21.57→10.29 s while WER
+  jumped 3.6%→32.1% (aggregate 7.0%→9.3%). Batched mode changes segmentation/
+  conditioning; validate WER on your domain before enabling it.
 - Real-audio WER is higher than the synthetic-TTS numbers (e.g., `small`
   7.0% vs 6.7% earlier; `turbo` 4.2% vs 4.8%), and the ranking differs, so
   don't select a model from synthetic audio alone.
@@ -88,8 +95,10 @@ Takeaways:
 
 ## Recommendation
 
-- **General real-time transcription:** `small`, beam 5, batch 4 for long audio.
-- **Accuracy-first:** `large-v3-turbo` (or `medium` if memory is tighter).
+- **General real-time transcription:** `small`, beam 5, **batch 0** for
+  accuracy; enable batch 4 only for long/offline throughput after checking WER.
+- **Accuracy-first:** `large-v3-turbo` (or `medium` if memory is tighter),
+  batch 0.
 - **Maximum CPU headroom:** `base`, accepting the WER penalty.
 - **Short replies:** initial prompt + closed-set matcher helps, but use a
   dedicated command/streaming model if `sì/no/forse` reliability is critical.

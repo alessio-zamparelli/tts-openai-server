@@ -248,13 +248,22 @@ def _tts_wav(client: httpx.Client, base_url: str, text: str, voice: str) -> tupl
 
 def _stt_text(client: httpx.Client, base_url: str, wav_bytes: bytes) -> tuple[str, float]:
     started = time.perf_counter()
-    response = _post(
-        client,
-        f"{base_url}/v1/audio/transcriptions",
-        files={"file": ("speech.wav", wav_bytes, "audio/wav")},
-        data={"model": "whisper-1", "language": "it", "response_format": "json"},
-    )
+    last_body = ""
+    for attempt in range(2):
+        response = _post(
+            client,
+            f"{base_url}/v1/audio/transcriptions",
+            files={"file": ("speech.wav", wav_bytes, "audio/wav")},
+            data={"model": "whisper-1", "language": "it", "response_format": "json"},
+        )
+        if response.status_code < 500:
+            break
+        last_body = response.text[:2000]
+        if attempt == 0:
+            time.sleep(0.5)
     elapsed = time.perf_counter() - started
+    if response.status_code >= 500:
+        raise RuntimeError(f"STT HTTP {response.status_code}: {last_body}")
     response.raise_for_status()
     return response.json()["text"], elapsed
 
