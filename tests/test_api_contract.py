@@ -85,7 +85,7 @@ def test_invalid_format_422(client):
 def _stub_encode(monkeypatch) -> None:
     """Route tests never depend on ffmpeg: the codec is stubbed here (the real
     ffmpeg path is verified end-to-end against the live API)."""
-    import tts_openai.routes_speech as rs
+    import tts_openai.routers.audio as rs
 
     def fake_encode(pcm: bytes, sample_rate: int, fmt: str) -> bytes:
         return b"ENCODED:" + fmt.encode()
@@ -145,7 +145,7 @@ def test_auth_required_when_configured():
     from fastapi.testclient import TestClient
 
     from tts_openai.config import Config
-    from tts_openai.server import create_app
+    from tts_openai.main import create_app
 
     config = Config(api_key="sk-secret")
     client = TestClient(create_app(config, engine=None))
@@ -169,7 +169,7 @@ def test_503_while_engine_loading():
     from fastapi.testclient import TestClient
 
     from tts_openai.config import Config
-    from tts_openai.server import create_app
+    from tts_openai.main import create_app
 
     app = create_app(Config(), engine=None)
     client = TestClient(app)
@@ -177,3 +177,46 @@ def test_503_while_engine_loading():
     r = client.post("/v1/audio/speech", json={"input": "hi"})
     assert r.status_code == 503
     assert r.json()["error"]["code"] == "unavailable"
+
+
+# --- app structure ----------------------------------------------------------
+
+
+def test_route_table_is_stable():
+    from tts_openai.config import Config
+    from tts_openai.main import create_app
+
+    app = create_app(Config(), engine=None)
+    assert set(app.openapi()["paths"]) == {
+        "/health",
+        "/v1/audio/speech",
+        "/v1/models",
+        "/v1/voices",
+        "/v1/voices/{name}",
+    }
+
+
+def test_server_module_is_a_compatibility_shim():
+    import tts_openai.main as main
+    import tts_openai.server as server
+
+    assert server.create_app is main.create_app
+    assert server.main is main.main
+
+
+def test_auth_dependency_leaves_unknown_v1_paths_as_404():
+    """Documented nuance: router-level auth runs only for registered routes."""
+    from fastapi.testclient import TestClient
+
+    from tts_openai.config import Config
+    from tts_openai.main import create_app
+
+    client = TestClient(create_app(Config(api_key="sk-secret"), engine=None))
+    assert client.get("/v1/unknown").status_code == 404
+    assert client.get("/health").status_code == 200
+    assert client.get("/v1/models").status_code == 401
+
+
+def test_health_reports_wyoming_disabled(client):
+    body = client.get("/health").json()
+    assert body["wyoming"] == {"enabled": False, "listening": False, "port": 10200}

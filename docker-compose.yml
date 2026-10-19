@@ -14,6 +14,11 @@ services:
     image: tts-openai:local
     ports:
       - "8080:8000"
+      # Wyoming protocol (Home Assistant). Enable it with
+      # POCKET_TTS_WYOMING_ENABLED=1 below. For mDNS auto-discovery use
+      # network_mode: host instead of this mapping (bridge mDNS usually does
+      # not cross to the LAN), or add the integration manually.
+      - "10200:10200"
     environment:
       # All POCKET_TTS_* knobs (docs: README "Configuration (env)"). Lines that
       # are active mirror the image defaults; everything else is commented out -
@@ -21,6 +26,23 @@ services:
       # Bind address/port (the app listens on 8000 inside the container).
       - POCKET_TTS_HOST=0.0.0.0
       - POCKET_TTS_PORT=8000
+      # Wyoming TTS listener for Home Assistant (unauthenticated by design;
+      # keep it on a trusted network). Set to 0 to disable.
+      - POCKET_TTS_WYOMING_ENABLED=1
+      # - POCKET_TTS_WYOMING_HOST=0.0.0.0
+      # - POCKET_TTS_WYOMING_PORT=10200
+      # Auto-discovery via _wyoming._tcp.local. (see the ports comment above).
+      # - POCKET_TTS_WYOMING_ZEROCONF=1
+      # - POCKET_TTS_WYOMING_NAME=tts-openai
+      # - POCKET_TTS_WYOMING_SAMPLES_PER_CHUNK=1024
+      # - POCKET_TTS_WYOMING_SENTENCE_SILENCE=0.0
+      # - POCKET_TTS_WYOMING_AUTO_PUNCTUATION=.?!。？！．؟
+      # - POCKET_TTS_WYOMING_READY_TIMEOUT_S=60
+      # Piper synthesis options (Home Assistant Piper add-on parity).
+      # - POCKET_TTS_PIPER_SPEAKER=0
+      # - POCKET_TTS_PIPER_LENGTH_SCALE=1.0
+      # - POCKET_TTS_PIPER_NOISE_SCALE=0.667
+      # - POCKET_TTS_PIPER_NOISE_W=0.333
       # Default backend: piper (or pocket, only in a WITH_POCKET=1 image).
       - POCKET_TTS_BACKEND=piper
       # OpenAI aliases (alloy, echo, ...) and requests without "voice" use this.

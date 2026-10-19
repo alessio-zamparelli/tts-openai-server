@@ -12,7 +12,8 @@
 # uv.lock (see [tool.uv.sources] in pyproject.toml) — no CUDA/NVIDIA layers.
 #
 # Build:    docker build -f deploy/Dockerfile -t tts-openai .
-# Run:      docker run --rm -p 8080:8000 -v tts-data:/data tts-openai
+# Run:      docker run --rm -p 8080:8000 -p 10200:10200 -v tts-data:/data tts-openai
+#           (add -e POCKET_TTS_WYOMING_ENABLED=1 for Home Assistant's Wyoming integration)
 # Pocket:   docker build -f deploy/Dockerfile --build-arg WITH_POCKET=1 -t tts-pocket .
 
 ###############################################################################
@@ -115,7 +116,7 @@ RUN chown -R tts:tts /data
 VOLUME ["/data"]
 
 USER tts
-EXPOSE 8000
+EXPOSE 8000 10200
 
 # The HTTP server binds immediately; the backend engine loads in a background
 # thread. The probe honors POCKET_TTS_HOST/PORT and bypasses HTTP proxy env vars.

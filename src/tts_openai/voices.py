@@ -130,6 +130,41 @@ def piper_language(voice: str) -> str:
     return name.split("_", 1)[0] if "_" in name else "en"
 
 
+def piper_language_tag(voice: str) -> str:
+    """BCP-47-ish tag for a Piper voice id/path.
+
+    ``it_IT-paola-medium`` -> ``it-IT`` (Wyoming/HA group voices by this);
+    falls back to the bare language code for unparseable names.
+    """
+    name = voice.strip().rsplit("/", 1)[-1]
+    if name.endswith(".onnx"):
+        name = name[: -len(".onnx")]
+    if "_" in name:
+        lang, rest = name.split("_", 1)
+        region = rest.split("-", 1)[0]
+        if len(lang) == 2 and len(region) == 2 and region.isalpha():
+            return f"{lang.lower()}-{region.upper()}"
+    return piper_language(voice)
+
+
+# pocket-tts model languages -> BCP-47-ish tags (informational, used by
+# Wyoming's info event). Unknown values fall back to their first two letters.
+_POCKET_LANGUAGE_TAGS = {
+    "english": "en",
+    "italian": "it",
+    "french": "fr",
+    "german": "de",
+    "spanish": "es",
+    "portuguese": "pt",
+}
+
+
+def pocket_language_tag(language: str) -> str:
+    """Best-effort BCP-47-ish tag for a pocket-tts language name."""
+    key = language.strip().lower().split("_", 1)[0]
+    return _POCKET_LANGUAGE_TAGS.get(key, key[:2] or "en")
+
+
 def resolve_piper_voice(requested: str, voice_map: dict[str, str]) -> str:
     """Map an alias to a Piper voice id; ids and local ``.onnx`` paths pass through.
 

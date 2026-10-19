@@ -14,10 +14,15 @@ from fastapi.testclient import TestClient
 
 from tts_openai.config import Config
 from tts_openai.engine import TTSModelLike, TTSEngine
-from tts_openai.server import create_app
+from tts_openai.main import create_app
 from tests.conftest import FakeTTSModel, fake_export_state
 
 DEFAULT_IDLE = Config().idle_unload_s
+
+
+def _idle_now(engine: TTSEngine) -> float:
+    """A monotonic clock value comfortably past the idle window."""
+    return engine._last_activity + DEFAULT_IDLE + 1
 
 
 def _make_engine(
@@ -79,7 +84,7 @@ def test_eviction_disabled_without_loader():
     assert not engine.eviction_enabled
     assert engine.loaded is True
     engine._last_activity -= 10_000  # stale timer
-    assert engine.maybe_unload(now=100_000) is False
+    assert engine.maybe_unload(now=_idle_now(engine)) is False
     assert engine._model is model
 
 
@@ -87,7 +92,7 @@ def test_eviction_disabled_when_timeout_zero():
     engine = _make_engine(Config(idle_unload_s=0))
     assert not engine.eviction_enabled
     engine._last_activity -= 10_000
-    assert engine.maybe_unload(now=100_000) is False
+    assert engine.maybe_unload(now=_idle_now(engine)) is False
     assert engine._model is not None
 
 
@@ -95,7 +100,7 @@ def test_maybe_unload_evicts_when_idle():
     calls: list[int] = []
     engine = _make_engine(loader_calls=calls)
     engine._last_activity -= 10_000
-    assert engine.maybe_unload(now=100_000) is True
+    assert engine.maybe_unload(now=_idle_now(engine)) is True
     assert engine._model is None
     assert engine.loaded is False
     assert calls == []  # unload alone never calls the loader
@@ -115,7 +120,7 @@ def test_no_unload_when_generation_in_flight():
     engine = _make_engine()
     engine._last_activity -= 10_000
     with engine._gen_lock:  # simulate an in-flight generation/stream
-        assert engine.maybe_unload(now=100_000) is False
+        assert engine.maybe_unload(now=_idle_now(engine)) is False
     assert engine._model is not None
 
 
@@ -124,7 +129,7 @@ def test_reload_restores_model_after_eviction():
     engine = _make_engine(loader_calls=calls)
     old = engine._model
     engine._last_activity -= 10_000
-    assert engine.maybe_unload(now=100_000) is True
+    assert engine.maybe_unload(now=_idle_now(engine)) is True
 
     fresh = engine.ensure_loaded()
     assert fresh is not None
@@ -146,7 +151,7 @@ def test_generate_wakes_engine_after_eviction():
     assert engine.stats.reloads == 0
 
     engine._last_activity -= 10_000
-    assert engine.maybe_unload(now=100_000) is True
+    assert engine.maybe_unload(now=_idle_now(engine)) is True
     assert engine._model is None
 
     pcm2 = engine.generate_pcm("second call", "alloy")
@@ -209,7 +214,7 @@ def test_eviction_clears_voice_cache():
     assert resolved <= engine.cached_voices()
 
     engine._last_activity -= 10_000
-    assert engine.maybe_unload(now=100_000) is True
+    assert engine.maybe_unload(now=_idle_now(engine)) is True
     assert engine.cached_voices() == frozenset()
 
 
@@ -234,7 +239,7 @@ def test_health_reflects_eviction():
         FakeTTSModel(), config=Config(idle_unload_s=DEFAULT_IDLE), loader=lambda: FakeTTSModel()
     )
     engine._last_activity -= 10_000
-    assert engine.maybe_unload(now=100_000) is True
+    assert engine.maybe_unload(now=_idle_now(engine)) is True
     with _make_client(engine) as client:
         body = client.get("/health").json()
     assert body["status"] == "ok"  # still serving; next request reloads
@@ -255,7 +260,7 @@ def test_speech_after_eviction_serves_200_with_reload():
         assert r1.status_code == 200
 
         engine._last_activity -= 10_000
-        assert engine.maybe_unload(now=100_000) is True
+        assert engine.maybe_unload(now=_idle_now(engine)) is True
         assert engine._model is None
 
         r2 = client.post("/v1/audio/speech", json={"input": "wake me up", "voice": "alloy"})
@@ -269,7 +274,7 @@ def test_speech_after_eviction_serves_200_with_reload():
 def test_streaming_after_eviction_serves_200():
     engine = _make_engine()
     engine._last_activity -= 10_000
-    assert engine.maybe_unload(now=100_000) is True
+    assert engine.maybe_unload(now=_idle_now(engine)) is True
     with _make_client(engine) as client:
         r = client.post(
             "/v1/audio/speech",

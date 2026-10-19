@@ -15,6 +15,7 @@ uv sync --extra piper   # + Piper (default backend); needed to actually synthesi
 uv sync --extra engine  # + pocket-tts and CPU torch (large), optional backend
 uv run tts-openai            # serve on 127.0.0.1:8000 with Piper/Paola
 POCKET_TTS_BACKEND=pocket uv run tts-openai   # legacy backend
+POCKET_TTS_WYOMING_ENABLED=1 uv run tts-openai  # + Wyoming on 0.0.0.0:10200
 ```
 
 - Real-model e2e tests are opt-in: `PIPER_E2E=1 uv run pytest -m e2e -v`
@@ -31,9 +32,16 @@ POCKET_TTS_BACKEND=pocket uv run tts-openai   # legacy backend
 
 ## Architecture
 
-- `server.py:create_app(config, engine)` — production passes `engine=None` and loads the
-  configured backend in a background thread; tests inject a fake engine via
-  `tests/conftest.py`. `app.state.engine is None` (→ 503) until the load completes.
+- `main.py:create_app(config, engine)` — app factory + lifespan. Production passes
+  `engine=None` and loads the configured backend in a background thread; tests inject a
+  fake engine via `tests/conftest.py`. `app.state.engine is None` (→ 503) until the load
+  completes. Routers live in `routers/`, shared dependencies in `dependencies.py`;
+  `server.py` is only a compatibility shim.
+- `routers/`: `audio.py`, `models.py`, `health.py`, `voices.py`. The `/v1` aggregate
+  router applies the `verify_api_key` dependency; `/health` is mounted outside it.
+- `wyoming_server.py` — opt-in Wyoming TCP listener (`POCKET_TTS_WYOMING_ENABLED`).
+  `build_info` reflects the engine voice list per `describe`; synthesis runs the blocking
+  engine through `asyncio.to_thread`, one sentence at a time.
 - `engine.py:load_engine()` dispatches on `Config.backend` (`piper` default, `pocket`
   legacy). Both imports are lazy, so the default test run works without either extra.
 - `engine.py:TTSEngine` wraps any duck-typed model (`TTSModelLike` protocol). One global
@@ -44,7 +52,9 @@ POCKET_TTS_BACKEND=pocket uv run tts-openai   # legacy backend
 - `piper_backend.py:PiperTTSModel` adapts `piper.PiperVoice`: alias/ID/path resolution,
   on-demand download (`piper.download_voices`) into `POCKET_TTS_PIPER_VOICE_DIR`, per-voice
   sample rate (`sample_rate_for`), whole-text concatenation and per-sentence streaming.
-  Pocket keeps its prompt-based voices and custom-voice registry.
+  Pocket keeps its prompt-based voices and custom-voice registry. Piper also exposes
+  `voice_metadata` (description/languages/speakers) and applies the
+  `POCKET_TTS_PIPER_*` synthesis options via a duck-typed `SynthesisConfig`.
 - Sample rates are per request: routes call `engine.sample_rate_for(voice)` for WAV
   headers/ffmpeg. Pocket always returns 24 kHz; Piper is 16 kHz (low/x_low) or 22.05 kHz
   (medium/high) — never read `engine.sample_rate` for a response header.
@@ -66,7 +76,16 @@ POCKET_TTS_BACKEND=pocket uv run tts-openai   # legacy backend
 - `config.py` is the source of truth for env vars. Backend defaults are applied in
   `Config.__post_init__`: on Piper every OpenAI alias maps to `it_IT-paola-medium` and
   `POCKET_TTS_DEFAULT_VOICE` empty means the backend default.
-- The API-key middleware guards only paths starting with `/v1/` (`/health` stays open).
+- The API-key check is a **router-level dependency** on the `/v1` aggregate router
+  (`/health` stays open). Unknown `/v1/*` paths return 404, not 401.
+- Wyoming is **unauthenticated by design**; `POCKET_TTS_API_KEY` does not apply to it.
+  Keep port 10200 on a trusted network and use `POCKET_TTS_WYOMING_HOST` to narrow it.
+- Wyoming handlers must call the blocking engine via `asyncio.to_thread`; generation is
+  done one sentence at a time so the global `_gen_lock` is never held across an `await`
+  (a disconnected client cannot leak it).
+- Wyoming voice lists are rebuilt on every `describe`; HA caches them, so the integration
+  must be reloaded after voices are added or removed. `wyoming-piper` parity uses
+  `sentence-stream` for splitting and `voice.speaker` for Piper `speaker_id` selection.
 - Root `github-deploy-example.yml` is a stale example; edit
   `.github/workflows/docker-publish.yml` instead.
 - `voices/jarvis1.safetensors` (~68 MB) is committed and seeded into the Docker image

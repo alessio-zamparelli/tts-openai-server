@@ -15,6 +15,13 @@ dependencies = [
     # FastAPI imports it lazily only when Form/UploadFile routes exist, so it
     # must be a direct dep instead of relying on pocket-tts pulling it in.
     "python-multipart>=0.0.9",
+    # Wyoming protocol (TCP JSONL + PCM) for Home Assistant / Rhasspy.
+    "wyoming>=1.10,<2",
+    # Sentence boundary detection for Wyoming synthesize streaming; the same
+    # splitter wyoming-piper uses.
+    "sentence-stream>=1.3,<2",
+    # Optional mDNS announcement of the Wyoming port (_wyoming._tcp.local.).
+    "zeroconf>=0.130",
 ]
 
 [project.optional-dependencies]
@@ -32,7 +39,7 @@ dev = [
 ]
 
 [project.scripts]
-tts-openai = "tts_openai.server:main"
+tts-openai = "tts_openai.main:main"
 
 [build-system]
 requires = ["hatchling"]

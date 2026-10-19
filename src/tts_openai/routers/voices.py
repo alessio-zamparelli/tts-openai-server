@@ -9,12 +9,12 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, Request, UploadFile
-from fastapi import Response
+from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
 
-from .config import Config
-from .engine import TTSEngine
-from .errors import (
+from ..config import Config
+from ..dependencies import get_config, get_engine, require_engine
+from ..engine import TTSEngine
+from ..errors import (
     OpenAIError,
     conflict,
     invalid_request,
@@ -22,10 +22,9 @@ from .errors import (
     not_found,
     not_implemented,
     payload_too_large,
-    unavailable,
 )
-from .voice_registry import validate_voice_name
-from .voices import KYUTAI_CATALOG, VOICE_LANGUAGE, piper_language
+from ..voice_registry import validate_voice_name
+from ..voices import KYUTAI_CATALOG, VOICE_LANGUAGE, piper_language
 
 # Extensions that pocket-tts can decode as an audio prompt.
 _AUDIO_EXTS = (".wav", ".mp3", ".flac")
@@ -36,15 +35,7 @@ VOICES_REPO = "https://huggingface.co/kyutai/tts-voices"
 # HF repo that hosts Piper voices (and each voice's MODEL_CARD license).
 PIPER_VOICES_REPO = "https://huggingface.co/rhasspy/piper-voices"
 
-# Content-type header used by multipart client hints.
-router = APIRouter()
-
-
-def _engine_or_503(request: Request) -> TTSEngine:
-    engine = getattr(request.app.state, "engine", None)
-    if engine is None:
-        raise unavailable("Model is still loading; retry shortly.")
-    return engine
+router = APIRouter(prefix="/voices", tags=["voices"])
 
 
 def _builtin_voice_entry(alias: str, target: str, backend: str = "pocket") -> dict:
@@ -64,8 +55,7 @@ def _builtin_voice_entry(alias: str, target: str, backend: str = "pocket") -> di
     }
 
 
-def _custom_voice_entry(request: Request, name: str, voice) -> dict:
-    engine = getattr(request.app.state, "engine", None)
+def _custom_voice_entry(name: str, voice, engine: TTSEngine | None) -> dict:
     return {
         "id": name,
         "aliases": [name],
@@ -78,17 +68,18 @@ def _custom_voice_entry(request: Request, name: str, voice) -> dict:
 
 
 @router.get("")
-def list_voices(request: Request) -> dict:
+def list_voices(
+    config: Config = Depends(get_config),
+    engine: TTSEngine | None = Depends(get_engine),
+) -> dict:
     """Return the full voice catalog: OpenAI aliases, extra catalog names, customs."""
-    cfg: Config = request.app.state.config
-    engine = getattr(request.app.state, "engine", None)
     cached = engine.cached_voices() if engine is not None else frozenset()
 
     data: list[dict] = []
     seen: set[str] = set()
     # OpenAI aliases first (stable, declared order).
-    for alias, target in cfg.voice_map.items():
-        entry = _builtin_voice_entry(alias, target, cfg.backend)
+    for alias, target in config.voice_map.items():
+        entry = _builtin_voice_entry(alias, target, config.backend)
         entry["cached"] = target in cached
         data.append(entry)
         seen.add(target)
@@ -96,30 +87,30 @@ def list_voices(request: Request) -> dict:
     # catalog: list the voice files that are actually installed locally.
     catalog = (
         (engine.installed_voices() if engine is not None else [])
-        if cfg.backend == "piper"
+        if config.backend == "piper"
         else sorted(KYUTAI_CATALOG)
     )
     for name in catalog:
-        if name in seen and cfg.backend != "piper":
+        if name in seen and config.backend != "piper":
             continue
-        entry = _builtin_voice_entry(name, name, cfg.backend)
+        entry = _builtin_voice_entry(name, name, config.backend)
         entry["cached"] = name in cached
         data.append(entry)
     # Custom voices from the registry (pocket-tts only).
     for voice in (engine.registry.all() if engine and engine.registry else []):
-        data.append(_custom_voice_entry(request, voice.name, voice))
+        data.append(_custom_voice_entry(voice.name, voice, engine))
 
     return {
         "object": "list",
         "data": data,
-        "backend": cfg.backend,
+        "backend": config.backend,
         "clone_supported": bool(engine and engine.supports_cloning),
     }
 
 
-def _collision(name: str, cfg: Config, engine: TTSEngine) -> str | None:
+def _collision(name: str, config: Config, engine: TTSEngine) -> str | None:
     """Return a human-readable conflict source if ``name`` is taken, else None."""
-    if name in cfg.voice_map:
+    if name in config.voice_map:
         return f"'{name}' is a built-in OpenAI alias"
     if name in KYUTAI_CATALOG:
         return f"'{name}' is a built-in Kyutai catalog voice"
@@ -130,14 +121,13 @@ def _collision(name: str, cfg: Config, engine: TTSEngine) -> str | None:
 
 @router.post("", status_code=201)
 def create_voice(
-    request: Request,
     name: str = Form(...),
     file: UploadFile = File(...),
     language: str | None = Form(default=None),
+    config: Config = Depends(get_config),
+    engine: TTSEngine = Depends(require_engine),
 ) -> dict:
     """Clone a voice from an uploaded audio prompt and persist it."""
-    cfg: Config = request.app.state.config
-    engine = _engine_or_503(request)
     if not engine.supports_cloning:
         raise not_implemented(
             f"Voice cloning is not supported by the {engine.model_name} backend. "
@@ -150,7 +140,7 @@ def create_voice(
     if error:
         raise invalid_request(error)
 
-    source = _collision(name, cfg, engine)
+    source = _collision(name, config, engine)
     if source:
         raise conflict(f"Cannot create voice: {source}.")
 
@@ -162,7 +152,7 @@ def create_voice(
             f"Supported: {', '.join(_AUDIO_EXTS)}."
         )
 
-    limit = cfg.max_upload_mb * 1024 * 1024
+    limit = config.max_upload_mb * 1024 * 1024
     # Write the upload up to limit+1 bytes so we can reject oversize cleanly.
     with tempfile.NamedTemporaryFile(
         prefix=f"clone-{name}-", suffix=suffix, delete=False, dir=engine.registry.directory
@@ -177,7 +167,7 @@ def create_voice(
                 total += len(chunk)
                 if total > limit:
                     raise payload_too_large(
-                        f"Upload exceeds the {cfg.max_upload_mb} MB limit."
+                        f"Upload exceeds the {config.max_upload_mb} MB limit."
                     )
                 tmp.write(chunk)
         finally:
@@ -195,17 +185,18 @@ def create_voice(
         tmp_path.unlink(missing_ok=True)
 
     voice = engine.registry.add(name, language=language)
-    return _custom_voice_entry(request, voice.name, voice)
+    return _custom_voice_entry(voice.name, voice, engine)
 
 
 @router.delete("/{name}")
-def delete_voice(name: str, request: Request) -> Response:
+def delete_voice(
+    name: str,
+    config: Config = Depends(get_config),
+    engine: TTSEngine = Depends(require_engine),
+) -> Response:
     """Remove a custom voice (file + registry entry). Builtin voices are 405."""
-    cfg: Config = request.app.state.config
-    engine = _engine_or_503(request)
-
-    builtin = name in cfg.voice_map or name in KYUTAI_CATALOG
-    if cfg.backend == "piper":
+    builtin = name in config.voice_map or name in KYUTAI_CATALOG
+    if config.backend == "piper":
         builtin = builtin or name in engine.installed_voices()
     if builtin:
         raise method_not_allowed(f"'{name}' is a built-in voice and cannot be deleted.")

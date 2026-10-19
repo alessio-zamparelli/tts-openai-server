@@ -51,7 +51,7 @@ def live_server() -> Iterator[str]:
     import uvicorn
 
     from tts_openai.config import Config
-    from tts_openai.server import create_app
+    from tts_openai.main import create_app
 
     cfg = Config(backend="piper", host="127.0.0.1", port=0, idle_unload_s=0)
     app = create_app(cfg)  # engine=None -> background load thread

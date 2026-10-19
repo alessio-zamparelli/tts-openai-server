@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from tts_openai.config import Config
 from tts_openai.engine import TTSEngine, _rss_mb
-from tts_openai.server import create_app
+from tts_openai.main import create_app
 from tests.conftest import FakeTTSModel
 
 ENGINE_LOGGER = "tts_openai.engine"
@@ -63,7 +63,7 @@ def test_maybe_unload_delegates_with_idle_reason(caplog):
     engine = _engine(loader=FakeTTSModel)
     engine._last_activity -= 10_000
     with caplog.at_level(logging.INFO, logger=ENGINE_LOGGER):
-        assert engine.maybe_unload(now=100_000) is True
+        assert engine.maybe_unload(now=engine._last_activity + 61) is True
 
     assert engine.stats.unloads == 1
     msgs = _messages(caplog, "model unloaded")

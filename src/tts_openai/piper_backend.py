@@ -18,13 +18,20 @@ import logging
 import threading
 import time
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Protocol, cast
 
 import numpy as np
 
 from .config import Config
-from .voices import is_piper_path, is_piper_voice_id, piper_language, resolve_piper_voice
+from .voices import (
+    is_piper_path,
+    is_piper_voice_id,
+    piper_language,
+    piper_language_tag,
+    resolve_piper_voice,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from .engine import TTSEngine
@@ -45,7 +52,37 @@ class _VoiceStateLike(Protocol):
 
     config: object  # PiperConfig, with .sample_rate
 
-    def synthesize(self, text: str) -> Iterator[_AudioChunkLike]: ...
+    def synthesize(
+        self, text: str, syn_config: object | None = None
+    ) -> Iterator[_AudioChunkLike]: ...
+
+
+@dataclass
+class _SynthesisConfig:
+    """Duck-typed subset of ``piper.config.SynthesisConfig``.
+
+    Keeping a local dataclass avoids importing the optional ``piper`` package
+    on the offline test path; ``PiperVoice.synthesize`` only reads attributes.
+    """
+
+    speaker_id: int | None = None
+    length_scale: float | None = None
+    noise_scale: float | None = None
+    noise_w_scale: float | None = None
+    normalize_audio: bool = True
+    volume: float = 1.0
+
+
+def _voice_description(voice: str, quality: object = None) -> str:
+    """Human-readable label for a Piper id/path (``paola (medium)``)."""
+    name = voice.strip().rsplit("/", 1)[-1]
+    if name.endswith(".onnx"):
+        name = name[: -len(".onnx")]
+    parts = name.split("-")
+    if len(parts) >= 3 and "_" in parts[0]:
+        speaker = "-".join(parts[1:-1])
+        return f"{speaker} ({quality or parts[-1]})"
+    return name
 
 
 def _default_voice_loader(path: Path) -> object:
@@ -72,6 +109,7 @@ class PiperTTSModel:
 
     backend = "piper"
     supports_cloning = False
+    supports_speaker = True
 
     def __init__(
         self,
@@ -97,6 +135,11 @@ class PiperTTSModel:
         self._downloader = downloader or _default_downloader
         self._download_lock = threading.Lock()
         self._default_state: object | None = None
+        # HA add-on parity: optional default speaker and synthesis scales.
+        self._speaker = config.piper_speaker.strip() or None
+        self._length_scale = config.piper_length_scale
+        self._noise_scale = config.piper_noise_scale
+        self._noise_w = config.piper_noise_w
         # Populated by preload (or by the first successful load of the default).
         self.sample_rate = 0
         self.language = piper_language(self.default_voice)
@@ -172,6 +215,66 @@ class PiperTTSModel:
             p.stem for p in self.voice_dir.glob("*.onnx") if is_piper_voice_id(p.stem)
         )
 
+    def voice_metadata(self, voice: str) -> dict[str, object]:
+        """Description/languages/speakers for a voice, without downloading.
+
+        Reads the ``.onnx.json`` beside the model (already present for every
+        advertised voice) and falls back to the id when it is missing.
+        """
+        resolved = self.resolve_voice(voice)
+        data: dict[str, object] = {}
+        model_path: Path | None = None
+        if is_piper_path(resolved):
+            model_path = Path(resolved).expanduser()
+        elif is_piper_voice_id(resolved):
+            model_path = self.voice_dir / f"{resolved}.onnx"
+        if model_path is not None:
+            try:
+                with Path(f"{model_path}.json").open(encoding="utf-8") as f:
+                    data = json.load(f)
+            except (OSError, ValueError, TypeError):
+                data = {}
+        audio = data.get("audio")
+        audio = audio if isinstance(audio, dict) else {}
+        speaker_map = data.get("speaker_id_map")
+        speaker_map = speaker_map if isinstance(speaker_map, dict) else {}
+        return {
+            "languages": [piper_language_tag(resolved)],
+            "description": _voice_description(resolved, audio.get("quality")),
+            "speakers": sorted(str(name) for name in speaker_map),
+        }
+
+    # -- synthesis options (HA add-on parity) --------------------------------
+
+    def _resolve_speaker_id(self, voice: object, speaker: str | None) -> int | None:
+        """Map a speaker name or numeric id to Piper's ``sid``.
+
+        Unknown names log a warning and fall back to the voice default, like
+        ``wyoming-piper`` does.
+        """
+        requested = speaker if speaker is not None else self._speaker
+        if not requested:
+            return None
+        config = getattr(voice, "config", None)
+        speaker_map = getattr(config, "speaker_id_map", None) or {}
+        if requested in speaker_map:
+            return int(speaker_map[requested])
+        try:
+            return int(requested)
+        except (TypeError, ValueError):
+            logger.warning(
+                "no speaker %r for this Piper voice; using the voice default", requested
+            )
+            return None
+
+    def _synthesis_config(self, voice: object, speaker: str | None) -> _SynthesisConfig:
+        return _SynthesisConfig(
+            speaker_id=self._resolve_speaker_id(voice, speaker),
+            length_scale=self._length_scale,
+            noise_scale=self._noise_scale,
+            noise_w_scale=self._noise_w,
+        )
+
     # -- TTSModelLike --------------------------------------------------------
 
     def get_state_for_audio_prompt(self, voice: str) -> object:
@@ -202,21 +305,27 @@ class PiperTTSModel:
             return int(cast(_VoiceStateLike, self._default_state).config.sample_rate)
         return self._read_sample_rate(self._ensure_files(resolved))
 
-    def generate_audio(self, model_state: object, text_to_generate: str) -> np.ndarray:
+    def generate_audio(
+        self, model_state: object, text_to_generate: str, speaker: str | None = None
+    ) -> np.ndarray:
         """Synthesize the whole text (one chunk per sentence, concatenated)."""
+        voice = cast(_VoiceStateLike, model_state)
+        syn_config = self._synthesis_config(voice, speaker)
         chunks = [
             np.asarray(chunk.audio_float_array, dtype=np.float32).reshape(-1)
-            for chunk in cast(_VoiceStateLike, model_state).synthesize(text_to_generate)
+            for chunk in voice.synthesize(text_to_generate, syn_config=syn_config)
         ]
         if not chunks:
             return np.zeros(0, dtype=np.float32)
         return np.concatenate(chunks)
 
     def generate_audio_stream(
-        self, model_state: object, text_to_generate: str
+        self, model_state: object, text_to_generate: str, speaker: str | None = None
     ) -> Iterator[np.ndarray]:
         """Yield one float32 array per sentence (Piper's native chunking)."""
-        for chunk in cast(_VoiceStateLike, model_state).synthesize(text_to_generate):
+        voice = cast(_VoiceStateLike, model_state)
+        syn_config = self._synthesis_config(voice, speaker)
+        for chunk in voice.synthesize(text_to_generate, syn_config=syn_config):
             yield np.asarray(chunk.audio_float_array, dtype=np.float32).reshape(-1)
 
 

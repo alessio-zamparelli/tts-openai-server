@@ -12,7 +12,7 @@ import pytest
 from tts_openai.config import Config
 from tts_openai.engine import TTSEngine
 from tts_openai.piper_backend import PiperTTSModel
-from tts_openai.server import create_app
+from tts_openai.main import create_app
 from tts_openai.voice_registry import VoiceRegistry
 
 
@@ -116,8 +116,10 @@ def client(engine: TTSEngine, config: Config):
 
 
 class _FakePiperConfig:
-    def __init__(self, sample_rate: int):
+    def __init__(self, sample_rate: int, speaker_id_map: dict[str, int] | None = None):
         self.sample_rate = sample_rate
+        self.speaker_id_map = speaker_id_map or {}
+        self.num_speakers = len(self.speaker_id_map) or 1
 
 
 class _FakePiperChunk:
@@ -128,11 +130,13 @@ class _FakePiperChunk:
 class FakePiperVoice:
     """Duck-typed PiperVoice: two 0.25 s chunks (one per fake sentence)."""
 
-    def __init__(self, sample_rate: int):
-        self.config = _FakePiperConfig(sample_rate)
+    def __init__(self, sample_rate: int, speaker_id_map: dict[str, int] | None = None):
+        self.config = _FakePiperConfig(sample_rate, speaker_id_map)
+        self.syn_configs: list[object | None] = []
 
-    def synthesize(self, text: str):
+    def synthesize(self, text: str, syn_config: object | None = None):
         # Two chunks totaling exactly 0.5 s (rate is odd for 22.05 kHz).
+        self.syn_configs.append(syn_config)
         total = self.config.sample_rate // 2
         first = total - self.config.sample_rate // 4
         yield _FakePiperChunk(np.zeros(first, dtype=np.float32))

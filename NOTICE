@@ -38,3 +38,18 @@ Optional backend: pocket-tts
 (https://huggingface.co/kyutai/tts-voices) have their own licenses, independent
 of this project. They are only installed with the `engine` extra and are not
 part of the default Docker image.
+
+Wyoming / discovery dependencies
+--------------------------------
+
+The protocol server and its helpers are permissively licensed except for the
+optional mDNS library:
+
+- `wyoming` (https://github.com/OHF-Voice/wyoming) — MIT
+- `sentence-stream` (https://github.com/OHF-Voice/sentence-stream) — Apache-2.0
+- `regex` (https://github.com/mrabarnett/mrab-regex) — Apache-2.0 AND CNRI-Python
+- `zeroconf` (https://github.com/python-zeroconf/python-zeroconf) — LGPL-2.1-or-later
+
+`zeroconf` is only used when `POCKET_TTS_WYOMING_ZEROCONF=1`; it is installed by
+default so enabling discovery needs no extra package.
+

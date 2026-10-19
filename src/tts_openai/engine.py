@@ -179,10 +179,12 @@ class TTSModelLike(Protocol):
 
     def get_state_for_audio_prompt(self, voice: str) -> object: ...
 
-    def generate_audio(self, model_state: object, text_to_generate: str) -> "AudioBuffer | np.ndarray": ...
+    def generate_audio(
+        self, model_state: object, text_to_generate: str, speaker: str | None = None
+    ) -> "AudioBuffer | np.ndarray": ...
 
     def generate_audio_stream(
-        self, model_state: object, text_to_generate: str
+        self, model_state: object, text_to_generate: str, speaker: str | None = None
     ) -> "Iterator[AudioBuffer | np.ndarray]": ...
 
 
@@ -266,10 +268,54 @@ class TTSEngine:
             getattr(self._model, "supports_cloning", True)
         )
 
+    @property
+    def supports_speaker(self) -> bool:
+        """Per-request speaker selection (Piper multi-speaker voices).
+
+        Falls back to the configured backend while the model is evicted, so a
+        waking request is not rejected before ``ensure_loaded()`` runs.
+        """
+        if self._model is not None:
+            return bool(getattr(self._model, "supports_speaker", False))
+        return self.backend == "piper"
+
+    def _check_speaker(self, model: TTSModelLike, speaker: str | None) -> None:
+        """Fail fast (before taking the generation lock) on unsupported options."""
+        if speaker is not None and not getattr(model, "supports_speaker", False):
+            raise ValueError(
+                f"Speaker selection is not supported by the {self.model_name} backend."
+            )
+
+    @staticmethod
+    def _generate_audio(
+        model: TTSModelLike, state: object, text: str, speaker: str | None
+    ) -> "AudioBuffer | np.ndarray":
+        if speaker is None:
+            return model.generate_audio(state, text)
+        return model.generate_audio(state, text, speaker=speaker)
+
+    @staticmethod
+    def _generate_audio_stream(
+        model: TTSModelLike, state: object, text: str, speaker: str | None
+    ) -> "Iterator[AudioBuffer | np.ndarray]":
+        if speaker is None:
+            return model.generate_audio_stream(state, text)
+        return model.generate_audio_stream(state, text, speaker=speaker)
+
     def installed_voices(self) -> list[str]:
         """Backend-provided local catalog (Piper scans its voice dir)."""
         fn = getattr(self._model, "installed_voices", None)
         return list(fn()) if fn is not None else []
+
+    def voice_metadata(self, voice: str) -> dict[str, object]:
+        """Backend-specific description/languages/speakers for a voice.
+
+        Deliberately does **not** reload an idle-evicted model just to describe
+        it; callers fall back to name-derived metadata until the next synthesis.
+        """
+        model = self._model
+        fn = getattr(model, "voice_metadata", None)
+        return dict(fn(voice)) if fn is not None else {}
 
     def touch(self) -> None:
         """Record an API request at ``now`` (resets the idle window)."""
@@ -571,10 +617,14 @@ class TTSEngine:
         else:
             self._gen_lock.acquire()
 
-    def generate_pcm(self, text: str, voice: str) -> bytes:
+    def generate_pcm(
+        self, text: str, voice: str, *, speaker: str | None = None
+    ) -> bytes:
         """Serialize on the global lock; return raw mono s16le PCM.
 
         The rate is backend/voice specific (see :meth:`sample_rate_for`).
+        ``speaker`` is a Piper extension (name or numeric id); backends without
+        multi-speaker support reject it with ``ValueError``.
 
         Captures the (possibly just-reloaded) model up front so a wake-up runs
         on the same instance that encoded the voice state. The queue guard
@@ -586,11 +636,12 @@ class TTSEngine:
         with guard:
             self._reject_if_full()
             model = self.ensure_loaded()
+            self._check_speaker(model, speaker)
             state, resolved = self.voice_state(voice)
             self._acquire_gen_lock()
             try:
                 t0 = time.perf_counter()
-                audio = model.generate_audio(state, text)
+                audio = self._generate_audio(model, state, text, speaker)
                 elapsed = time.perf_counter() - t0
             finally:
                 self._gen_lock.release()
@@ -608,7 +659,9 @@ class TTSEngine:
         )
         return pcm
 
-    def generate_pcm_stream(self, text: str, voice: str) -> "Iterator[bytes]":
+    def generate_pcm_stream(
+        self, text: str, voice: str, *, speaker: str | None = None
+    ) -> "Iterator[bytes]":
         """Yield mono s16le PCM chunks while holding the global generation lock.
 
         The lock is held for the lifetime of the generator (StreamingResponse
@@ -621,6 +674,7 @@ class TTSEngine:
         with guard:
             self._reject_if_full()
             model = self.ensure_loaded()
+            self._check_speaker(model, speaker)
             self.touch()
             state, resolved = self.voice_state(voice)
             rate = self._sample_rate_resolved(resolved)
@@ -629,7 +683,7 @@ class TTSEngine:
                 t0 = time.perf_counter()
                 audio_seconds = 0.0
                 try:
-                    for chunk in model.generate_audio_stream(state, text):
+                    for chunk in self._generate_audio_stream(model, state, text, speaker):
                         pcm = to_pcm16(chunk)
                         audio_seconds += len(pcm) / (2 * rate)
                         yield pcm
