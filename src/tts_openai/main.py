@@ -8,6 +8,7 @@ startup. Routers live in :mod:`tts_openai.routers`; shared dependencies in
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
 import threading
@@ -25,6 +26,93 @@ from .errors import OpenAIError
 from .routers import audio, health, models, voices
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_reason(body: bytes) -> str:
+    """Best-effort human-readable reason from an error response body.
+
+    Handles the OpenAI error shape (``{"error": {"message": …}}``) our
+    handlers produce, the ``{"detail": …}`` shape FastAPI/Starlette defaults
+    use for 422/404/405, and falls back to raw body text.
+    """
+    if not body:
+        return "<no body>"
+    text = body[:600].decode("utf-8", "replace")
+    try:
+        payload = json.loads(text)
+    except (ValueError, TypeError):
+        return text.strip()
+    if isinstance(payload, dict):
+        err = payload.get("error")
+        if isinstance(err, dict) and err.get("message"):
+            return str(err["message"])
+        detail = payload.get("detail")
+        if detail is not None:
+            return detail if isinstance(detail, str) else json.dumps(detail)[:300]
+        return json.dumps(payload)[:300]
+    return text.strip()
+
+
+class _ErrorLoggingMiddleware:
+    """Log every 4xx/5xx response with the reason the client actually saw.
+
+    Pure ASGI: it watches the ``http.response.start`` / ``http.response.body``
+    messages flowing through ``send``, so it sees the real status code and
+    body regardless of which handler produced them (OpenAI error handler,
+    FastAPI validation 422, Starlette default 404/405). Unhandled exceptions
+    (500) surface as a raised exception instead of a response: log the
+    traceback and re-raise — the outer ServerErrorMiddleware still sends the
+    500, so the HTTP behavior is unchanged. Body bytes are only kept for
+    status >= 400 (error bodies are tiny; 200 streaming journeys are never
+    buffered).
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":  # e.g. websocket/lifespan messages
+            await self.app(scope, receive, send)
+            return
+        request = Request(scope)
+        status: dict[str, int] = {}
+        body: list[bytes] = []
+        sent = 0
+
+        async def send_wrapper(message):
+            nonlocal sent
+            if message["type"] == "http.response.start":
+                status["code"] = message["status"]
+            elif message["type"] == "http.response.body" and status.get("code", 0) >= 400:
+                chunk = message.get("body", b"")
+                if sent < 600:
+                    body.append(chunk[: 600 - sent])
+                    sent += len(body[-1])
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        except Exception:
+            logger.exception(
+                "unhandled exception while handling %s %s",
+                request.method,
+                request.url.path,
+            )
+            raise  # ServerErrorMiddleware (outermost) sends the 500 and re-raises
+
+        status_code = status.get("code")
+        if status_code is not None and status_code >= 400:
+            reason = _extract_reason(b"".join(body)).replace("\n", " ").strip()
+            log = logger.error if status_code >= 500 else logger.warning
+            client = request.client.host if request.client else "-"
+            log(
+                "rejecting %s %s (client=%s): %d %s",
+                request.method,
+                request.url.path,
+                client,
+                status_code,
+                reason,
+            )
 
 
 def create_app(config: Config | None = None, engine: TTSEngine | None = None) -> FastAPI:
@@ -98,25 +186,16 @@ def create_app(config: Config | None = None, engine: TTSEngine | None = None) ->
     app = FastAPI(title="tts-openai", version="0.1.0", lifespan=lifespan)
     app.state.config = config
 
-    def _openai_error_handler(request: Request, exc: Exception) -> JSONResponse:
-        # Starlette dispatches this handler only for the registered exception type.
+    def _openai_error_handler(_request: Request, exc: Exception) -> JSONResponse:
+        # Starlette dispatches this handler only for the registered exception
+        # type; the reason is logged by the _ErrorLoggingMiddleware.
         err = cast(OpenAIError, exc)
-        # Surface the failure server-side: without this a 400 is just a bare
-        # uvicorn access line and the reason (e.g. an unknown voice/format sent
-        # by an OpenAI client) is invisible in the logs.
-        log = logger.error if err.status >= 500 else logger.warning
-        client = request.client.host if request.client else "-"
-        log(
-            "rejecting %s %s (client=%s): %d %s",
-            request.method,
-            request.url.path,
-            client,
-            err.status,
-            err.message,
-        )
         return JSONResponse(status_code=err.status, content=err.to_payload())
 
     app.add_exception_handler(OpenAIError, _openai_error_handler)
+    # Every 4xx/5xx response (regardless of which handler produced it) is
+    # logged with its reason; unhandled exceptions get an ERROR + traceback.
+    app.add_middleware(_ErrorLoggingMiddleware)
 
     # /v1/* is guarded by the Bearer dependency; /health stays public.
     v1 = APIRouter(prefix="/v1", dependencies=[Depends(verify_api_key)])
