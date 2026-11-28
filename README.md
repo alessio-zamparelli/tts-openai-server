@@ -134,6 +134,12 @@ Compose builds the default Piper-only image and maps host `8080` to container
 `8000` plus host `10200` to the Wyoming listener (enabled in the Compose
 environment).
 
+Compose also writes rotating application logs to the repo's `./logs` folder
+(`server.log` plus five 10 MB backups); console output stays available with
+`docker compose logs -f tts`. The container runs as uid 10001, so create the
+folder and make it writable before starting on Linux:
+`mkdir -p logs && sudo chown 10001:10001 logs`.
+
 ### Docker one-liner
 
 ```bash
@@ -882,6 +888,7 @@ than silently falling back. Booleans accept `1`, `true`, `yes`, `on`
 | `TTS_HOST` | `127.0.0.1` | both | uvicorn bind host. Docker overrides to `0.0.0.0`. |
 | `TTS_PORT` | `8000` | both | uvicorn bind port and healthcheck port. |
 | `TTS_LOG_LEVEL` | `info` | both | Python/uvicorn log level: `debug`, `info`, `warning`, `error`, `critical`. `debug` also logs per-request `/v1/audio/speech` details. Successful `/health` probes are never access-logged; failing ones are. Every 4xx/5xx response is logged with its reason (`WARNING`/`ERROR`, plus a traceback for unhandled exceptions). |
+| `TTS_LOG_FILE` | *(empty)* | both | Optional rotating log file (10 MB per file, 5 backups); console logging stays enabled. Docker Compose writes to `/logs/server.log`, persisted to `./logs`. |
 | `TTS_DEFAULT_VOICE` | backend default | both | Voice used when the request omits `voice`. Empty → backend default (`it_IT-paola-medium` / `alloy`). |
 | `TTS_VOICE_MAP` | backend defaults | both | Comma-separated `alias=voice` overrides, merged over the default alias map. A bare value raises `ValueError`. |
 | `TTS_LANGUAGE` | `english` | pocket | pocket-tts model language, e.g. `english`, `italian`, `italian_24l`, `french_24l`. Ignored by Piper, which derives language from the voice id. |
@@ -927,6 +934,7 @@ External variables used by the engines:
 # TTS_HOST=127.0.0.1
 # TTS_PORT=8000
 # TTS_LOG_LEVEL=info
+# TTS_LOG_FILE=/var/log/tts-openai/server.log
 # TTS_API_KEY=change-me
 
 # --- Wyoming TTS (Home Assistant / Rhasspy) ---

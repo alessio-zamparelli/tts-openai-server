@@ -26,6 +26,8 @@ services:
       # Bind address/port (the app listens on 8000 inside the container).
       - TTS_HOST=0.0.0.0
       - TTS_PORT=8000
+      # Rotating log file inside the container, persisted to ./logs on the host.
+      - TTS_LOG_FILE=/logs/server.log
       # Wyoming TTS listener for Home Assistant (unauthenticated by design;
       # keep it on a trusted network). Set to 0 to disable.
       - TTS_WYOMING_ENABLED=1
@@ -36,7 +38,7 @@ services:
       # - TTS_WYOMING_NAME=tts-openai
       # - TTS_WYOMING_SAMPLES_PER_CHUNK=1024
       # - TTS_WYOMING_SENTENCE_SILENCE=0.0
-      # - TTS_WYOMING_AUTO_PUNCTUATION=.?!。？！．؟
+      # - TTS_WYOMING_AUTO_PUNCTUATION=.?!。？！．？
       # - TTS_WYOMING_READY_TIMEOUT_S=60
       # Piper synthesis options (Home Assistant Piper add-on parity).
       # - TTS_PIPER_SPEAKER=0
@@ -83,6 +85,8 @@ services:
     volumes:
       # Persistent Piper voices + pocket weights + cloned-voice registry.
       - tts-data:/data
+      # Persistent application logs in the repository's ./logs directory.
+      - ./logs:/logs
     restart: unless-stopped
     healthcheck:
       # --healthcheck honors TTS_PORT and bypasses HTTP proxy env vars.

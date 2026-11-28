@@ -13,6 +13,7 @@ import logging
 import sys
 import threading
 from contextlib import asynccontextmanager
+from logging.handlers import RotatingFileHandler
 from typing import cast
 
 import uvicorn
@@ -271,15 +272,33 @@ def _healthcheck() -> int:
             conn.close()
 
 
+_LOG_MAX_BYTES = 10 * 1024 * 1024  # rotate the log file past 10 MB
+_LOG_BACKUP_COUNT = 5  # keep five rotated backups (server.log.1 … .5)
+
+
 def _configure_logging(config: Config) -> None:
-    """Apply the configured log level and quiet successful /health probes.
+    """Apply the configured log level, optional log file, and quiet probes.
 
     Called once from ``main()`` before uvicorn boots; ``Config.log_level``
     (``TTS_LOG_LEVEL``) drives both the app loggers and uvicorn's own.
+    ``Config.log_file`` (``TTS_LOG_FILE``) adds a rotating file handler next
+    to the console handler, so persistent container logs stay available via
+    ``docker compose logs`` *and* on disk.
     """
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    if config.log_file:
+        handlers.append(
+            RotatingFileHandler(
+                config.log_file,
+                maxBytes=_LOG_MAX_BYTES,
+                backupCount=_LOG_BACKUP_COUNT,
+                encoding="utf-8",
+            )
+        )
     logging.basicConfig(
         level=logging.getLevelName(config.log_level.upper()),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        handlers=handlers,
     )
     # uvicorn.access: drop only *successful* healthcheck lines, so a failing
     # probe (503 while the model loads, 500) is still visible in the logs.
@@ -311,7 +330,10 @@ def main() -> None:
     config = Config.from_env()
     _configure_logging(config)
     app = create_app(config)
-    uvicorn.run(app, host=config.host, port=config.port, log_level=config.log_level)
+    # log_config=None: our own handlers (console + optional file) from
+    # _configure_logging also receive uvicorn's log records, instead of
+    # uvicorn replacing them with its private dictConfig.
+    uvicorn.run(app, host=config.host, port=config.port, log_level=config.log_level, log_config=None)
 
 
 if __name__ == "__main__":

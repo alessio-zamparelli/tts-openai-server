@@ -77,6 +77,7 @@ class Config:
     host: str = "127.0.0.1"
     port: int = 8000
     log_level: str = "info"  # tts_openai + uvicorn log level: debug/info/warning/error/critical
+    log_file: str = ""  # optional rotating log file; console logging remains enabled
     # Pocket-specific: Piper takes its language from the voice id instead.
     language: str = "english"
     default_voice: str = ""  # empty = backend default (piper: it_IT-paola-medium)
@@ -162,6 +163,7 @@ class Config:
             host=env.get("TTS_HOST", "127.0.0.1"),
             port=_env_int(env, "TTS_PORT", 8000),
             log_level=env.get("TTS_LOG_LEVEL", "info"),
+            log_file=env.get("TTS_LOG_FILE", ""),
             language=env.get("TTS_LANGUAGE", "english"),
             default_voice=env.get("TTS_DEFAULT_VOICE", ""),
             voice_map=voice_map,
