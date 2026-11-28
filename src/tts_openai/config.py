@@ -5,6 +5,7 @@ All settings have sane defaults; every knob is optional.
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 
@@ -14,6 +15,33 @@ from .voices import (
 )
 
 BACKENDS = ("piper", "pocket")
+
+# Deprecated `POCKET_TTS_*` env names and their `TTS_*` replacements.
+# `Config.from_env` still accepts the legacy names (with a WARNING) so
+# pre-rename deployments keep booting; the new name wins when both are set.
+LEGACY_ENV_RENAMES: dict[str, str] = {
+    "POCKET_TTS_API_KEY": "TTS_API_KEY",
+    "POCKET_TTS_BACKEND": "TTS_BACKEND",
+    "POCKET_TTS_CACHE_DIR": "TTS_CACHE_DIR",
+    "POCKET_TTS_DEFAULT_VOICE": "TTS_DEFAULT_VOICE",
+    "POCKET_TTS_HOST": "TTS_HOST",
+    "POCKET_TTS_IDLE_POLL_S": "TTS_IDLE_POLL_S",
+    "POCKET_TTS_IDLE_UNLOAD_S": "TTS_IDLE_UNLOAD_S",
+    "POCKET_TTS_LANGUAGE": "TTS_LANGUAGE",
+    "POCKET_TTS_LOG_FILE": "TTS_LOG_FILE",
+    "POCKET_TTS_MAX_CACHED_VOICES": "TTS_MAX_CACHED_VOICES",
+    "POCKET_TTS_MAX_UPLOAD_MB": "TTS_MAX_UPLOAD_MB",
+    "POCKET_TTS_MAX_WAITING": "TTS_MAX_WAITING",
+    "POCKET_TTS_PIPER_AUTO_DOWNLOAD": "TTS_PIPER_AUTO_DOWNLOAD",
+    "POCKET_TTS_PIPER_VOICE_DIR": "TTS_PIPER_VOICE_DIR",
+    "POCKET_TTS_PORT": "TTS_PORT",
+    "POCKET_TTS_QUANTIZE": "TTS_QUANTIZE",
+    "POCKET_TTS_QUEUE_TIMEOUT_S": "TTS_QUEUE_TIMEOUT_S",
+    "POCKET_TTS_VOICE_MAP": "TTS_VOICE_MAP",
+    "POCKET_TTS_WARMUP_VOICES": "TTS_WARMUP_VOICES",
+}
+
+_log = logging.getLogger(__name__)
 
 
 def _split_voice_map(raw: str) -> dict[str, str]:
@@ -146,6 +174,21 @@ class Config:
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> "Config":
         env = dict(os.environ if env is None else env)
+        # Deprecated `POCKET_TTS_*` names still work: map each onto its `TTS_*`
+        # replacement with a WARNING so pre-rename deployments keep booting.
+        # The legacy key is dropped afterwards, so validation errors reference
+        # the new name only.
+        for old, new in sorted(LEGACY_ENV_RENAMES.items()):
+            if old not in env:
+                continue
+            if new in env:  # the new name is authoritative when both are set
+                _log.warning("%s is deprecated and ignored because %s is set", old, new)
+            else:
+                env[new] = env[old]
+                _log.warning("%s is deprecated; use %s instead", old, new)
+            del env[old]
+        for key in sorted(k for k in env if k.startswith("POCKET_TTS_")):
+            _log.warning("%s is deprecated and has no TTS_ equivalent; remove it", key)
         backend = env.get("TTS_BACKEND", "piper").strip().lower()
         voice_map = backend_default_aliases(backend) if backend in BACKENDS else {}
         if raw := env.get("TTS_VOICE_MAP", ""):

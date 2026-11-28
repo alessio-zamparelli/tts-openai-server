@@ -172,3 +172,65 @@ def test_log_level_from_env():
 def test_log_level_invalid_rejected():
     with pytest.raises(ValueError, match="TTS_LOG_LEVEL"):
         Config.from_env({"TTS_LOG_LEVEL": "verbose"})
+
+
+# --- deprecated POCKET_TTS_* aliases -----------------------------------------
+
+
+def test_legacy_envs_are_mapped():
+    cfg = Config.from_env(
+        {
+            "POCKET_TTS_LOG_FILE": "/tmp/server.log",
+            "POCKET_TTS_MAX_WAITING": "8",
+            "POCKET_TTS_IDLE_UNLOAD_S": "0",
+        }
+    )
+    assert cfg.log_file == "/tmp/server.log"
+    assert cfg.max_waiting == 8
+    assert cfg.idle_unload_s == 0
+
+
+def test_new_env_precedence_over_legacy(caplog):
+    cfg = Config.from_env(
+        {
+            "TTS_BACKEND": "piper",
+            "POCKET_TTS_BACKEND": "pocket",
+            "TTS_MAX_WAITING": "3",
+            "POCKET_TTS_MAX_WAITING": "9",
+        }
+    )
+    assert cfg.backend == "piper"
+    assert cfg.max_waiting == 3
+    assert "POCKET_TTS_BACKEND is deprecated and ignored because TTS_BACKEND is set" in caplog.text
+    assert "POCKET_TTS_MAX_WAITING is deprecated and ignored because TTS_MAX_WAITING is set" in caplog.text
+
+
+def test_legacy_backend_selects_pocket():
+    cfg = Config.from_env({"POCKET_TTS_BACKEND": "pocket"})
+    assert cfg.backend == "pocket"
+    assert cfg.default_voice == "alloy"
+
+
+def test_legacy_typed_values_still_validated_under_new_name():
+    with pytest.raises(ValueError, match="TTS_MAX_WAITING"):
+        Config.from_env({"POCKET_TTS_MAX_WAITING": "lots"})
+
+
+def test_legacy_env_warns_with_replacement(caplog):
+    Config.from_env({"POCKET_TTS_LOG_FILE": "/tmp/x"})
+    assert (
+        "POCKET_TTS_LOG_FILE is deprecated; use TTS_LOG_FILE instead" in caplog.text
+    )
+
+
+def test_unknown_legacy_env_warns(caplog):
+    Config.from_env({"POCKET_TTS_NOPE": "1"})
+    assert (
+        "POCKET_TTS_NOPE is deprecated and has no TTS_ equivalent; remove it"
+        in caplog.text
+    )
+
+
+def test_no_warning_without_legacy_envs(caplog):
+    Config.from_env({"TTS_LOG_FILE": "/tmp/x"})
+    assert "deprecated" not in caplog.text

@@ -882,6 +882,12 @@ than silently falling back. Booleans accept `1`, `true`, `yes`, `on`
 (case-insensitive), except `TTS_QUANTIZE`, which accepts `1`, `true`, or
 `yes`.
 
+> **Deprecated `POCKET_TTS_*` aliases** — the old `POCKET_TTS_*` names are
+> deprecated but still accepted: `Config.from_env()` maps each one onto its
+> `TTS_*` replacement below (all 1:1) and logs a WARNING at startup. The
+> `TTS_*` name wins when both are set. Update deployments to the new names;
+> the aliases will be removed later.
+
 | Variable | Default | Applies to | Description |
 | --- | --- | --- | --- |
 | `TTS_BACKEND` | `piper` | both | `piper` or `pocket`. Anything else fails startup. |

@@ -30,15 +30,22 @@ stop spamming successful `/health` probes.
    format, stream flag, input length) so `TTS_LOG_LEVEL=debug` shows exactly
    what each `/v1/audio/speech` call sent.
 
-## B. Env rename `TTS_*` → `TTS_*` (breaking)
+## B. Env rename `POCKET_TTS_*` → `TTS_*` (breaking, with deprecation aliases)
 
 The `POCKET_TTS_` prefix dates from the pocket-tts era; the package is now
 `tts-openai`. Rename **all** environment variables by replacing the literal
 `POCKET_TTS_` prefix with `TTS_` repo-wide (source, tests, Dockerfile,
-docker-compose, benchmarks, README, AGENTS.md, PLAN docs, NOTICE). No
-backward-compat aliases: the old names are ignored after this change.
+docker-compose, benchmarks, README, AGENTS.md, PLAN docs, NOTICE). The
+`src/pocket_tts_openai/` package is removed; only `src/tts_openai` ships.
 
-Deployments must update their env. The new log knob is `TTS_LOG_LEVEL`
+The old names are kept as **deprecated aliases**, not silently dropped:
+`Config.from_env()` maps each `POCKET_TTS_*` onto its `TTS_*` replacement
+(`LEGACY_ENV_RENAMES` in `src/tts_openai/config.py`) and logs a WARNING at
+startup; the `TTS_*` name wins when both are set. This lets pre-rename
+deployments keep booting while nudging them to migrate. Remove the aliases
+in a future release.
+
+Deployments should update their env. The new log knob is `TTS_LOG_LEVEL`
 (valid values: `debug`, `info`, `warning`, `error`, `critical`; default
 `info`).
 
