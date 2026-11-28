@@ -18,6 +18,11 @@ def test_load_shedding_envs():
     assert cfg.queue_timeout_s == 0.25
 
 
+def test_log_file_env():
+    cfg = Config.from_env({"POCKET_TTS_LOG_FILE": "/tmp/server.log"})
+    assert cfg.log_file == "/tmp/server.log"
+
+
 def test_load_shedding_defaults_off():
     cfg = Config.from_env({})
     assert cfg.max_waiting == 0

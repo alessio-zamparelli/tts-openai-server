@@ -7,6 +7,7 @@ fake engine, production loads pocket-tts in a background thread on startup.
 from __future__ import annotations
 
 import logging
+from logging.handlers import RotatingFileHandler
 import sys
 import threading
 from contextlib import asynccontextmanager
@@ -23,6 +24,24 @@ from .routes_speech import health, models, speech
 from .routes_voices import router as voices_router
 
 logger = logging.getLogger(__name__)
+
+_LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+_LOG_MAX_BYTES = 10 * 1024 * 1024
+_LOG_BACKUP_COUNT = 5
+
+
+def _configure_logging(log_file: str = "") -> None:
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    if log_file:
+        handlers.append(
+            RotatingFileHandler(
+                log_file,
+                maxBytes=_LOG_MAX_BYTES,
+                backupCount=_LOG_BACKUP_COUNT,
+                encoding="utf-8",
+            )
+        )
+    logging.basicConfig(level=logging.INFO, format=_LOG_FORMAT, handlers=handlers)
 
 
 def create_app(config: Config | None = None, engine: TTSEngine | None = None) -> FastAPI:
@@ -169,10 +188,10 @@ def _healthcheck() -> int:
 def main() -> None:
     if "--healthcheck" in sys.argv[1:]:
         raise SystemExit(_healthcheck())
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     config = Config.from_env()
+    _configure_logging(config.log_file)
     app = create_app(config)
-    uvicorn.run(app, host=config.host, port=config.port)
+    uvicorn.run(app, host=config.host, port=config.port, log_config=None)
 
 
 if __name__ == "__main__":

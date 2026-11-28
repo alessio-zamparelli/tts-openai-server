@@ -10,10 +10,10 @@ services:
       dockerfile: deploy/Dockerfile
       args:
         # 1 also installs pocket-tts + CPU torch (~1 GB image) and seeds jarvis1.
-        WITH_POCKET: "0"
+        WITH_POCKET: "1"
     image: pocket-tts-openai:local
     ports:
-      - "8080:8000"
+      - "49112:8000"
     environment:
       # All POCKET_TTS_* knobs (docs: README "Configuration (env)"). Lines that
       # are active mirror the image defaults; everything else is commented out -
@@ -21,10 +21,11 @@ services:
       # Bind address/port (the app listens on 8000 inside the container).
       - POCKET_TTS_HOST=0.0.0.0
       - POCKET_TTS_PORT=8000
+      - POCKET_TTS_LOG_FILE=/logs/server.log
       # Default backend: piper (or pocket, only in a WITH_POCKET=1 image).
-      - POCKET_TTS_BACKEND=piper
+      - POCKET_TTS_BACKEND=pocket
       # OpenAI aliases (alloy, echo, ...) and requests without "voice" use this.
-      - POCKET_TTS_DEFAULT_VOICE=it_IT-paola-medium
+      # - POCKET_TTS_DEFAULT_VOICE=it_IT-paola-medium
       # Where Piper .onnx models are cached (baked into /data by the image).
       # - POCKET_TTS_PIPER_VOICE_DIR=/data/cache/piper
       # Download missing Piper voices on demand from rhasspy/piper-voices.
@@ -38,11 +39,11 @@ services:
       # Comma-separated voices to load at startup.
       # - POCKET_TTS_WARMUP_VOICES=
       # --- pocket-tts backend (requires WITH_POCKET=1 above) ------------------
-      # - POCKET_TTS_BACKEND=pocket
+      - POCKET_TTS_BACKEND=pocket
       # - POCKET_TTS_LANGUAGE=italian_24l
-      # - POCKET_TTS_QUANTIZE=1
-      # - POCKET_TTS_CACHE_DIR=/data/cache
-      # - POCKET_TTS_MAX_UPLOAD_MB=25
+      - POCKET_TTS_QUANTIZE=1
+      - POCKET_TTS_CACHE_DIR=/data/cache
+      - POCKET_TTS_MAX_UPLOAD_MB=25
       # Evict the model from RAM after this many idle seconds with no API
       # requests; 0 keeps the model resident always. Next request reloads it.
       # - POCKET_TTS_IDLE_UNLOAD_S=300
@@ -61,6 +62,8 @@ services:
     volumes:
       # Persistent Piper voices + pocket weights + cloned-voice registry.
       - tts-data:/data
+      # Persistent application logs in the repository's ./logs directory.
+      - ./logs:/logs
     restart: unless-stopped
     healthcheck:
       # --healthcheck honors POCKET_TTS_PORT and bypasses HTTP proxy env vars.

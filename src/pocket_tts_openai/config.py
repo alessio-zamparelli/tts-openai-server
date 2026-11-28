@@ -62,6 +62,7 @@ class Config:
     backend: str = "piper"
     host: str = "127.0.0.1"
     port: int = 8000
+    log_file: str = ""
     # Pocket-specific: Piper takes its language from the voice id instead.
     language: str = "english"
     default_voice: str = ""  # empty = backend default (piper: it_IT-paola-medium)
@@ -111,6 +112,7 @@ class Config:
             backend=backend,
             host=env.get("POCKET_TTS_HOST", "127.0.0.1"),
             port=_env_int(env, "POCKET_TTS_PORT", 8000),
+            log_file=env.get("POCKET_TTS_LOG_FILE", ""),
             language=env.get("POCKET_TTS_LANGUAGE", "english"),
             default_voice=env.get("POCKET_TTS_DEFAULT_VOICE", ""),
             voice_map=voice_map,

@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from pocket_tts_openai.config import Config
 from pocket_tts_openai.engine import TTSEngine, _rss_mb
-from pocket_tts_openai.server import create_app
+from pocket_tts_openai.server import _configure_logging, create_app
 from tests.conftest import FakeTTSModel
 
 ENGINE_LOGGER = "pocket_tts_openai.engine"
@@ -26,6 +26,25 @@ def _messages(caplog, needle: str) -> list[str]:
 def _engine(**kwargs) -> TTSEngine:
     cfg = Config(idle_unload_s=60)
     return TTSEngine(FakeTTSModel(), config=cfg, **kwargs)
+
+
+def test_configured_log_file_receives_messages(tmp_path):
+    log_file = tmp_path / "server.log"
+    root = logging.getLogger()
+    original_handlers = root.handlers[:]
+    original_level = root.level
+    try:
+        root.handlers.clear()
+        _configure_logging(str(log_file))
+        logging.getLogger("test.persistent").info("persistent message")
+        for handler in root.handlers:
+            handler.flush()
+        assert "persistent message" in log_file.read_text()
+    finally:
+        for handler in root.handlers:
+            handler.close()
+        root.handlers[:] = original_handlers
+        root.setLevel(original_level)
 
 
 def test_rss_helper_sanity():

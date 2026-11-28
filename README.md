@@ -199,6 +199,7 @@ eviction (previous section) an idle process holds ~0 MB of model.
 | `POCKET_TTS_BACKEND` | `piper` | `piper` or `pocket` |
 | `POCKET_TTS_HOST` | `127.0.0.1` | bind host |
 | `POCKET_TTS_PORT` | `8000` | bind port |
+| `POCKET_TTS_LOG_FILE` | — | optional rotating log file; console logging remains enabled |
 | `POCKET_TTS_DEFAULT_VOICE` | backend default | `it_IT-paola-medium` (piper) / `alloy` (pocket); used when `voice` is omitted |
 | `POCKET_TTS_VOICE_MAP` | backend defaults | alias→voice overrides, e.g. `alloy=en_US-lessac-medium` |
 | `POCKET_TTS_PIPER_VOICE_DIR` | `~/.cache/piper` | Piper `.onnx` cache (Docker: `/data/cache/piper`) |
@@ -224,6 +225,7 @@ Uncomment the knobs you need; values are examples (defaults are in the table abo
 # POCKET_TTS_BACKEND=piper
 # POCKET_TTS_HOST=127.0.0.1
 # POCKET_TTS_PORT=8000
+# POCKET_TTS_LOG_FILE=/var/log/pocket-tts/server.log
 # POCKET_TTS_API_KEY=change-me
 # --- backend / voices ---
 # POCKET_TTS_DEFAULT_VOICE=it_IT-paola-medium
@@ -275,6 +277,11 @@ and seed the `jarvis1` cloned voice.
 
 Or `docker compose up -d --build` (see `docker-compose.yml`).
 
+- **Container logs**: Compose writes application logs to the repo's `./logs`
+  folder (`server.log` plus five 10 MB backups). Console output remains
+  available with `docker compose logs -f tts`. The container
+  runs as uid 10001, so make the folder writable before starting it on Linux:
+  `mkdir -p logs && sudo chown 10001:10001 logs`.
 - **Runtime user**: non-root (`tts`, uid 10001), exposes `8000`.
 - **Persistent volume** `/data`: Piper voices (`/data/cache/piper`), pocket
   weights (`HF_HOME=/data/hf`) and the cloned-voice registry
