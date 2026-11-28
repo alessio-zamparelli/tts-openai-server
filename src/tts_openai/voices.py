@@ -91,7 +91,7 @@ PIPER_DEFAULT_VOICE = "it_IT-paola-medium"
 
 # OpenAI aliases on the Piper backend all resolve to the server default. Keeping
 # the mapping explicit (rather than special-casing alias lookups) means
-# POCKET_TTS_VOICE_MAP can override individual names as usual.
+# TTS_VOICE_MAP can override individual names as usual.
 PIPER_DEFAULT_ALIASES: dict[str, str] = {
     alias: PIPER_DEFAULT_VOICE for alias in DEFAULT_VOICE_ALIASES
 }

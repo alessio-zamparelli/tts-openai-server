@@ -38,7 +38,7 @@
 | Config `italian_24l.yaml` | `weights_path: hf://kyutai/pocket-tts/languages/italian_24l/model.safetensors@39592ff…` (cloning, **gated `auto`**) — fallback `weights_path_without_voice_cloning` (open) |
 | Fallback logic | `tts_model.has_voice_cloning=True` init; on any download failure of `weights_path` → `=False` + open weights → `clone_voice` raises `VOICE_CLONING_UNSUPPORTED` (message points to huggingface.co/kyutai/pocket-tts + `uvx hf auth login`) |
 | Local HF cache (before) | only `models--kyutai--pocket-tts-without-voice-cloning`, **english** only (209 MB model + tokenizer + english embeddings) — the e2e suite runs on the default `english` model |
-| Server default | `config.py` `language: str = "english"`; env `POCKET_TTS_LANGUAGE`; **no dotenv loader** in `config.py`/`server.py` (env must be exported when launching) |
+| Server default | `config.py` `language: str = "english"`; env `TTS_LANGUAGE`; **no dotenv loader** in `config.py`/`server.py` (env must be exported when launching) |
 | python-dotenv | **not installed** (we keep zero new deps; load `.env` via shell `set -a; . ./.env; set +a`) |
 | RAM/disk | 8 GB total / 6.2 GB available at check; 44 GB free disk — `italian_24l` fp32 ~2 GB is fine |
 | Git | `.env` untracked ✓ and now **gitignored** (this change) |
@@ -85,7 +85,7 @@ Security rules for this whole task:
 6. **Verify outputs** — wav: valid header, duration in range, RMS/peak > silence
    threshold with the same checks the e2e suite uses; mp3: ffprobe parseable, duration
    ≈ expected; log pitch/RMS so a "generic male vs mTC" contrast is available.
-7. **Server proof (bonus)** — boot the real app with `POCKET_TTS_LANGUAGE=italian_24l`
+7. **Server proof (bonus)** — boot the real app with `TTS_LANGUAGE=italian_24l`
    - token, `POST /v1/voices` clone for the speaker, `POST /v1/audio/speech` with the
    cloned voice → wav; proves the clone path through our own stack (same code the
    server already ships). Speed: first load ~1–2 min (download done, CPU load of a

@@ -87,7 +87,7 @@ def test_cloning_not_implemented_on_piper(piper_client):
     )
     assert r.status_code == 501
     assert r.json()["error"]["code"] == "not_implemented"
-    assert "POCKET_TTS_BACKEND=pocket" in r.json()["error"]["message"]
+    assert "TTS_BACKEND=pocket" in r.json()["error"]["message"]
 
 
 def test_delete_builtin_voice_is_405(piper_client):

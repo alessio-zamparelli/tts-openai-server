@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, Response
 from fastapi.responses import StreamingResponse
 
@@ -12,6 +14,8 @@ from ..errors import invalid_request, rate_limited
 from ..schemas import MODEL_ALIASES, SUPPORTED_FORMATS, SpeechRequest
 
 router = APIRouter(tags=["audio"])
+
+logger = logging.getLogger(__name__)
 
 
 def _stream_speech_pcm(engine: TTSEngine, text: str, voice: str):
@@ -30,6 +34,14 @@ def _stream_speech_wav(engine: TTSEngine, text: str, voice: str, sample_rate: in
 @router.post("/audio/speech", response_model=None, summary="Create speech")
 def speech(req: SpeechRequest, engine: TTSEngine = Depends(require_engine)) -> Response:
     """Synthesize ``req.input`` with the requested voice; return wav or pcm bytes."""
+    logger.debug(
+        "speech request: model=%s voice=%s format=%s stream=%s chars=%d",
+        req.model,
+        req.voice,
+        req.response_format,
+        req.stream,
+        len(req.input),
+    )
     if req.model not in MODEL_ALIASES:
         raise invalid_request(
             f"Unknown model '{req.model}'. Available models: {', '.join(MODEL_ALIASES)}.")

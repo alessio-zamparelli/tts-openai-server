@@ -14,13 +14,13 @@ uv run pytest tests/test_engine.py::test_generation_is_serialized   # one test
 uv sync --extra piper   # + Piper (default backend); needed to actually synthesize
 uv sync --extra engine  # + pocket-tts and CPU torch (large), optional backend
 uv run tts-openai            # serve on 127.0.0.1:8000 with Piper/Paola
-POCKET_TTS_BACKEND=pocket uv run tts-openai   # legacy backend
-POCKET_TTS_WYOMING_ENABLED=1 uv run tts-openai  # + Wyoming on 0.0.0.0:10200
+TTS_BACKEND=pocket uv run tts-openai   # legacy backend
+TTS_WYOMING_ENABLED=1 uv run tts-openai  # + Wyoming on 0.0.0.0:10200
 ```
 
 - Real-model e2e tests are opt-in: `PIPER_E2E=1 uv run pytest -m e2e -v`
   (`tests/test_integration_piper.py`, downloads the 64 MB default voice) and
-  `POCKET_TTS_E2E=1 uv run pytest -m e2e -v` (`tests/test_integration.py`,
+  `TTS_E2E=1 uv run pytest -m e2e -v` (`tests/test_integration.py`,
   downloads pocket weights). Both boot a real uvicorn server.
 - No lint/format/typecheck tooling is configured. `pyrightconfig.json` exists but nothing
   runs pyright. CI (`.github/workflows/docker-publish.yml`) gates the GHCR publish on
@@ -39,7 +39,7 @@ POCKET_TTS_WYOMING_ENABLED=1 uv run tts-openai  # + Wyoming on 0.0.0.0:10200
   `server.py` is only a compatibility shim.
 - `routers/`: `audio.py`, `models.py`, `health.py`, `voices.py`. The `/v1` aggregate
   router applies the `verify_api_key` dependency; `/health` is mounted outside it.
-- `wyoming_server.py` — opt-in Wyoming TCP listener (`POCKET_TTS_WYOMING_ENABLED`).
+- `wyoming_server.py` — opt-in Wyoming TCP listener (`TTS_WYOMING_ENABLED`).
   `build_info` reflects the engine voice list per `describe`; synthesis runs the blocking
   engine through `asyncio.to_thread`, one sentence at a time.
 - `engine.py:load_engine()` dispatches on `Config.backend` (`piper` default, `pocket`
@@ -50,20 +50,20 @@ POCKET_TTS_WYOMING_ENABLED=1 uv run tts-openai  # + Wyoming on 0.0.0.0:10200
   voice. The LRU default is backend-dependent: 2 whole ONNX sessions for Piper, 32 state
   snapshots for pocket.
 - `piper_backend.py:PiperTTSModel` adapts `piper.PiperVoice`: alias/ID/path resolution,
-  on-demand download (`piper.download_voices`) into `POCKET_TTS_PIPER_VOICE_DIR`, per-voice
+  on-demand download (`piper.download_voices`) into `TTS_PIPER_VOICE_DIR`, per-voice
   sample rate (`sample_rate_for`), whole-text concatenation and per-sentence streaming.
   Pocket keeps its prompt-based voices and custom-voice registry. Piper also exposes
   `voice_metadata` (description/languages/speakers) and applies the
-  `POCKET_TTS_PIPER_*` synthesis options via a duck-typed `SynthesisConfig`.
+  `TTS_PIPER_*` synthesis options via a duck-typed `SynthesisConfig`.
 - Sample rates are per request: routes call `engine.sample_rate_for(voice)` for WAV
   headers/ffmpeg. Pocket always returns 24 kHz; Piper is 16 kHz (low/x_low) or 22.05 kHz
   (medium/high) — never read `engine.sample_rate` for a response header.
-- Idle eviction: a watchdog drops the model after `POCKET_TTS_IDLE_UNLOAD_S` idle seconds
+- Idle eviction: a watchdog drops the model after `TTS_IDLE_UNLOAD_S` idle seconds
   and the next request reloads it. Enabled only when a `loader` is attached (production),
   so fake engines never evict. `/health` deliberately does **not** reset the idle timer.
 - Custom voices (pocket only): `voice_registry.py` persists
   `<cache_dir>/voices/registry.json` plus one `<name>.safetensors` per voice
-  (`POCKET_TTS_CACHE_DIR`, default `~/.cache/pocket_tts`). Cloning runs the encode under
+  (`TTS_CACHE_DIR`, default `~/.cache/pocket_tts`). Cloning runs the encode under
   the gen lock but the `.safetensors` export outside it. Piper has no registry and
   `POST /v1/voices` returns 501.
 
@@ -71,15 +71,15 @@ POCKET_TTS_WYOMING_ENABLED=1 uv run tts-openai  # + Wyoming on 0.0.0.0:10200
 
 - `engine.to_pcm16` mutates its input buffer in place; callers must not reuse the audio
   chunk after conversion.
-- `POCKET_TTS_VOICE_MAP` entries must be `alias=voice` (comma-separated); a bare value
+- `TTS_VOICE_MAP` entries must be `alias=voice` (comma-separated); a bare value
   raises `ValueError` at startup.
 - `config.py` is the source of truth for env vars. Backend defaults are applied in
   `Config.__post_init__`: on Piper every OpenAI alias maps to `it_IT-paola-medium` and
-  `POCKET_TTS_DEFAULT_VOICE` empty means the backend default.
+  `TTS_DEFAULT_VOICE` empty means the backend default.
 - The API-key check is a **router-level dependency** on the `/v1` aggregate router
   (`/health` stays open). Unknown `/v1/*` paths return 404, not 401.
-- Wyoming is **unauthenticated by design**; `POCKET_TTS_API_KEY` does not apply to it.
-  Keep port 10200 on a trusted network and use `POCKET_TTS_WYOMING_HOST` to narrow it.
+- Wyoming is **unauthenticated by design**; `TTS_API_KEY` does not apply to it.
+  Keep port 10200 on a trusted network and use `TTS_WYOMING_HOST` to narrow it.
 - Wyoming handlers must call the blocking engine via `asyncio.to_thread`; generation is
   done one sentence at a time so the global `_gen_lock` is never held across an `await`
   (a disconnected client cannot leak it).

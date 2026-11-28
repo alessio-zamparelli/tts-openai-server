@@ -540,11 +540,11 @@ def run_model(
             env = os.environ.copy()
             env.update(
                 {
-                    "POCKET_TTS_BACKEND": "piper",
-                    "POCKET_TTS_HOST": "127.0.0.1",
-                    "POCKET_TTS_PORT": str(port),
-                    "POCKET_TTS_DEFAULT_VOICE": args.tts_voice,
-                    "POCKET_TTS_IDLE_UNLOAD_S": "0",
+                    "TTS_BACKEND": "piper",
+                    "TTS_HOST": "127.0.0.1",
+                    "TTS_PORT": str(port),
+                    "TTS_DEFAULT_VOICE": args.tts_voice,
+                    "TTS_IDLE_UNLOAD_S": "0",
                 }
             )
             binary = tts_repo / ".venv/bin/tts-openai"

@@ -540,7 +540,7 @@ class TTSEngine:
         if not self.supports_cloning:
             raise RuntimeError(
                 "voice cloning is not supported by the "
-                f"{self.model_name} backend (use POCKET_TTS_BACKEND=pocket)"
+                f"{self.model_name} backend (use TTS_BACKEND=pocket)"
             )
         registry = self.registry
         if registry is None:  # pragma: no cover - supports_cloning implies registry

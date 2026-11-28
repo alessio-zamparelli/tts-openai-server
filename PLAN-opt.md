@@ -203,7 +203,7 @@ present → run; absent → skip, mirroring existing practice):
 - **Also `/v1/audio/speech` with `stream: true` + compressed + *unknown voice* → 400**
   (the 2.5 fix) — fake engine raises `ValueError` from `generate_pcm_stream`.
 
-**E2E — `tests/test_integration.py`** (real model, `POCKET_TTS_E2E=1`): add one
+**E2E — `tests/test_integration.py`** (real model, `TTS_E2E=1`): add one
 `stream: true` + `aac` (low-latency muxer) request → chunked, non-empty, first chunk
 arrives before generation completes (elapsed < full buffer time), and a
 `stream: false` + `mp3` sanity. Skip if ffmpeg absent.
@@ -291,7 +291,7 @@ finally:
 1. **Item 1** (`to_pcm16`) — trivial, isolated → suite + pyright.
 2. **Item 3** (`clone_voice`) — trivial, isolated → suite + pyright.
 3. **Item 2** (ffmpeg streaming) — the substantive change, own test slice → suite +
-   pyright, then `POCKET_TTS_E2E=1 uv run pytest -m e2e` (real-model validation, incl.
+   pyright, then `TTS_E2E=1 uv run pytest -m e2e` (real-model validation, incl.
    the new compressed-streaming e2e). Commit each item separately (or squash 1+3 into a
    "perf/locks" commit and keep 2 separate) so the ffmpeg mechanics are reviewable in
    isolation.

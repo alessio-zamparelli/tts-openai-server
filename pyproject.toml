@@ -27,7 +27,7 @@ dependencies = [
 [project.optional-dependencies]
 # Default TTS engine (backend=piper). GPL-3.0-or-later; see NOTICE.
 piper = ["piper-tts>=1.8,<2"]
-# Legacy backend (POCKET_TTS_BACKEND=pocket). On Linux prefer the CPU-only torch
+# Legacy backend (TTS_BACKEND=pocket). On Linux prefer the CPU-only torch
 # build to avoid ~3 GB of CUDA wheels:
 #   uv sync --extra engine --index https://download.pytorch.org/whl/cpu
 engine = ["pocket-tts>=0.1", "torch>=2.0"]
@@ -51,7 +51,7 @@ packages = ["src/tts_openai"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
-markers = ["e2e: end-to-end tests against a real backend (PIPER_E2E=1 or POCKET_TTS_E2E=1)"]
+markers = ["e2e: end-to-end tests against a real backend (PIPER_E2E=1 or TTS_E2E=1)"]
 
 [tool.pyright]
 venvPath = "."

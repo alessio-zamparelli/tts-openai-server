@@ -131,7 +131,7 @@ def create_voice(
     if not engine.supports_cloning:
         raise not_implemented(
             f"Voice cloning is not supported by the {engine.model_name} backend. "
-            "Run the server with POCKET_TTS_BACKEND=pocket to clone from an audio prompt."
+            "Run the server with TTS_BACKEND=pocket to clone from an audio prompt."
         )
     if engine.registry is None:  # pragma: no cover - supports_cloning implies registry
         raise invalid_request("voice registry is not configured")

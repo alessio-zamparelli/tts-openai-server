@@ -10,8 +10,8 @@ from tts_openai.config import Config
 def test_load_shedding_envs():
     cfg = Config.from_env(
         {
-            "POCKET_TTS_MAX_WAITING": "8",
-            "POCKET_TTS_QUEUE_TIMEOUT_S": "0.25",
+            "TTS_MAX_WAITING": "8",
+            "TTS_QUEUE_TIMEOUT_S": "0.25",
         }
     )
     assert cfg.max_waiting == 8
@@ -25,15 +25,15 @@ def test_load_shedding_defaults_off():
 
 
 def test_queue_timeout_accepts_fractional():
-    cfg = Config.from_env({"POCKET_TTS_QUEUE_TIMEOUT_S": "0.5"})
+    cfg = Config.from_env({"TTS_QUEUE_TIMEOUT_S": "0.5"})
     assert cfg.queue_timeout_s == 0.5
 
 
 def test_load_shedding_non_numeric_rejected():
-    with pytest.raises(ValueError, match="POCKET_TTS_MAX_WAITING"):
-        Config.from_env({"POCKET_TTS_MAX_WAITING": "lots"})
-    with pytest.raises(ValueError, match="POCKET_TTS_QUEUE_TIMEOUT_S"):
-        Config.from_env({"POCKET_TTS_QUEUE_TIMEOUT_S": "soon"})
+    with pytest.raises(ValueError, match="TTS_MAX_WAITING"):
+        Config.from_env({"TTS_MAX_WAITING": "lots"})
+    with pytest.raises(ValueError, match="TTS_QUEUE_TIMEOUT_S"):
+        Config.from_env({"TTS_QUEUE_TIMEOUT_S": "soon"})
 
 
 # --- backend selection -------------------------------------------------------
@@ -49,25 +49,25 @@ def test_piper_is_the_default_backend():
 
 
 def test_pocket_backend_defaults():
-    cfg = Config.from_env({"POCKET_TTS_BACKEND": "pocket"})
+    cfg = Config.from_env({"TTS_BACKEND": "pocket"})
     assert cfg.backend == "pocket"
     assert cfg.default_voice == "alloy"
     assert cfg.voice_map["alloy"] == "alba"
 
 
 def test_backend_validation():
-    with pytest.raises(ValueError, match="POCKET_TTS_BACKEND"):
-        Config.from_env({"POCKET_TTS_BACKEND": "nope"})
+    with pytest.raises(ValueError, match="TTS_BACKEND"):
+        Config.from_env({"TTS_BACKEND": "nope"})
 
 
 def test_voice_map_override_and_piper_envs():
     cfg = Config.from_env(
         {
-            "POCKET_TTS_VOICE_MAP": "alloy=en_US-lessac-medium",
-            "POCKET_TTS_DEFAULT_VOICE": "en_US-lessac-medium",
-            "POCKET_TTS_PIPER_VOICE_DIR": "/tmp/piper",
-            "POCKET_TTS_PIPER_AUTO_DOWNLOAD": "0",
-            "POCKET_TTS_MAX_CACHED_VOICES": "4",
+            "TTS_VOICE_MAP": "alloy=en_US-lessac-medium",
+            "TTS_DEFAULT_VOICE": "en_US-lessac-medium",
+            "TTS_PIPER_VOICE_DIR": "/tmp/piper",
+            "TTS_PIPER_AUTO_DOWNLOAD": "0",
+            "TTS_MAX_CACHED_VOICES": "4",
         }
     )
     assert cfg.voice_map["alloy"] == "en_US-lessac-medium"
@@ -97,15 +97,15 @@ def test_wyoming_defaults_disabled():
 def test_wyoming_envs_parse():
     cfg = Config.from_env(
         {
-            "POCKET_TTS_WYOMING_ENABLED": "1",
-            "POCKET_TTS_WYOMING_HOST": "127.0.0.1",
-            "POCKET_TTS_WYOMING_PORT": "10300",
-            "POCKET_TTS_WYOMING_SAMPLES_PER_CHUNK": "512",
-            "POCKET_TTS_WYOMING_SENTENCE_SILENCE": "0.25",
-            "POCKET_TTS_WYOMING_AUTO_PUNCTUATION": "",
-            "POCKET_TTS_WYOMING_ZEROCONF": "yes",
-            "POCKET_TTS_WYOMING_NAME": "living-room",
-            "POCKET_TTS_WYOMING_READY_TIMEOUT_S": "5",
+            "TTS_WYOMING_ENABLED": "1",
+            "TTS_WYOMING_HOST": "127.0.0.1",
+            "TTS_WYOMING_PORT": "10300",
+            "TTS_WYOMING_SAMPLES_PER_CHUNK": "512",
+            "TTS_WYOMING_SENTENCE_SILENCE": "0.25",
+            "TTS_WYOMING_AUTO_PUNCTUATION": "",
+            "TTS_WYOMING_ZEROCONF": "yes",
+            "TTS_WYOMING_NAME": "living-room",
+            "TTS_WYOMING_READY_TIMEOUT_S": "5",
         }
     )
     assert cfg.wyoming_enabled is True
@@ -131,10 +131,10 @@ def test_wyoming_invalid_values_rejected():
 def test_piper_synthesis_options_from_env():
     cfg = Config.from_env(
         {
-            "POCKET_TTS_PIPER_SPEAKER": "alice",
-            "POCKET_TTS_PIPER_LENGTH_SCALE": "0.8",
-            "POCKET_TTS_PIPER_NOISE_SCALE": "0.5",
-            "POCKET_TTS_PIPER_NOISE_W": "0.3",
+            "TTS_PIPER_SPEAKER": "alice",
+            "TTS_PIPER_LENGTH_SCALE": "0.8",
+            "TTS_PIPER_NOISE_SCALE": "0.5",
+            "TTS_PIPER_NOISE_W": "0.3",
         }
     )
     assert cfg.piper_speaker == "alice"
@@ -149,3 +149,21 @@ def test_piper_synthesis_options_default_unset():
     assert cfg.piper_length_scale is None
     assert cfg.piper_noise_scale is None
     assert cfg.piper_noise_w is None
+
+
+# --- log level --------------------------------------------------------------
+
+def test_log_level_defaults_to_info():
+    assert Config().log_level == "info"
+    assert Config.from_env({}).log_level == "info"
+
+
+def test_log_level_from_env():
+    assert Config.from_env({"TTS_LOG_LEVEL": "debug"}).log_level == "debug"
+    # whitespace/case tolerated, normalized
+    assert Config.from_env({"TTS_LOG_LEVEL": "  Warning "}).log_level == "warning"
+
+
+def test_log_level_invalid_rejected():
+    with pytest.raises(ValueError, match="TTS_LOG_LEVEL"):
+        Config.from_env({"TTS_LOG_LEVEL": "verbose"})

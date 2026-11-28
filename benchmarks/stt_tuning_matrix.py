@@ -123,11 +123,11 @@ def main(argv: list[str] | None = None) -> int:
     tts_env = os.environ.copy()
     tts_env.update(
         {
-            "POCKET_TTS_BACKEND": "piper",
-            "POCKET_TTS_HOST": "127.0.0.1",
-            "POCKET_TTS_PORT": str(tts_port),
-            "POCKET_TTS_DEFAULT_VOICE": args.tts_voice,
-            "POCKET_TTS_IDLE_UNLOAD_S": "0",
+            "TTS_BACKEND": "piper",
+            "TTS_HOST": "127.0.0.1",
+            "TTS_PORT": str(tts_port),
+            "TTS_DEFAULT_VOICE": args.tts_voice,
+            "TTS_IDLE_UNLOAD_S": "0",
         }
     )
     tts_bin = tts_repo / ".venv/bin/tts-openai"

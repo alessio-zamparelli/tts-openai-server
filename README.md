@@ -77,12 +77,12 @@ Backend comparison:
 | Default voice | `it_IT-paola-medium` | `alloy` → `alba` |
 | Voice cloning | No (`POST /v1/voices` → 501) | Yes |
 | Streaming granularity | One chunk per sentence | Sub-sentence chunks |
-| Model cache | `POCKET_TTS_PIPER_VOICE_DIR` | `HF_HOME` + `POCKET_TTS_CACHE_DIR` |
+| Model cache | `TTS_PIPER_VOICE_DIR` | `HF_HOME` + `TTS_CACHE_DIR` |
 | Typical loaded RSS | ~171 MB (Paola medium) | ~887 MB fp32 / ~395 MB int8 |
 | License | GPL-3.0-or-later | Upstream Kyutai license |
 
-The backend is selected with `POCKET_TTS_BACKEND=piper|pocket`. The default
-Docker image installs only Piper, so `POCKET_TTS_BACKEND=pocket` requires the
+The backend is selected with `TTS_BACKEND=piper|pocket`. The default
+Docker image installs only Piper, so `TTS_BACKEND=pocket` requires the
 `WITH_POCKET=1` image (or `uv sync --extra engine` locally).
 
 ---
@@ -104,19 +104,19 @@ uv run tts-openai
 
 # Optional: add pocket-tts and CPU torch.
 uv sync --extra piper --extra engine
-POCKET_TTS_BACKEND=pocket uv run tts-openai
+TTS_BACKEND=pocket uv run tts-openai
 ```
 
 Bind to all interfaces or another port:
 
 ```bash
-POCKET_TTS_HOST=0.0.0.0 POCKET_TTS_PORT=8080 uv run tts-openai
+TTS_HOST=0.0.0.0 TTS_PORT=8080 uv run tts-openai
 ```
 
 Also serve the Wyoming protocol (for Home Assistant) on port 10200:
 
 ```bash
-POCKET_TTS_WYOMING_ENABLED=1 uv run tts-openai
+TTS_WYOMING_ENABLED=1 uv run tts-openai
 ```
 
 The package entry point is `tts-openai` (installed by `uv sync` from
@@ -139,7 +139,7 @@ environment).
 ```bash
 docker build -f deploy/Dockerfile -t tts-openai .
 docker run --rm -p 8080:8000 -p 10200:10200 \
-  -e POCKET_TTS_WYOMING_ENABLED=1 \
+  -e TTS_WYOMING_ENABLED=1 \
   -v tts-data:/data tts-openai
 ```
 
@@ -193,7 +193,7 @@ curl -s http://localhost:8080/v1/audio/speech \
 | --- | --- | --- | --- |
 | `model` | string | `tts-1` | One of `tts-1`, `tts-1-hd`, `gpt-4o-mini-tts`. All aliases serve the same backend model. Any other value → `400`. |
 | `input` | string | required | Text to synthesize. Whitespace-only → `400`. |
-| `voice` | string | backend default | OpenAI alias, Piper voice id/path, Kyutai catalog voice, custom cloned voice, or a passthrough path/URL. Omitted → `POCKET_TTS_DEFAULT_VOICE` / backend default. |
+| `voice` | string | backend default | OpenAI alias, Piper voice id/path, Kyutai catalog voice, custom cloned voice, or a passthrough path/URL. Omitted → `TTS_DEFAULT_VOICE` / backend default. |
 | `response_format` | string | `wav` | `wav`, `pcm`, `mp3`, `opus`, `aac`, `flac`. Any other value is rejected by FastAPI validation (`422`). |
 | `stream` | bool | `false` | Private extension. Returns a chunked `StreamingResponse` for every format. |
 | `speed` | float | — | Accepted for compatibility, **ignored**. |
@@ -397,7 +397,7 @@ voices, then custom cloned voices (sorted).
 - `license` points at the backend's voice repository, not a per-file legal
   analysis. Check the individual voice's model card before redistribution.
 - On Piper, additional entries are the `.onnx` voices actually installed in
-  `POCKET_TTS_PIPER_VOICE_DIR`; there is no static Piper catalog.
+  `TTS_PIPER_VOICE_DIR`; there is no static Piper catalog.
 - On pocket, the static Kyutai catalog is listed.
 - `clone_supported` is true only on a pocket backend with a voice registry.
 
@@ -411,7 +411,7 @@ still loading).
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `name` | string | yes | `^[a-z0-9][a-z0-9_-]{0,63}$`: 1–64 chars, starts lowercase/digit, only lowercase letters, digits, `_`, `-`. |
-| `file` | upload | yes | `.wav`, `.mp3`, or `.flac`. Extension decides the decoder. Max `POCKET_TTS_MAX_UPLOAD_MB` (default 25 MB). |
+| `file` | upload | yes | `.wav`, `.mp3`, or `.flac`. Extension decides the decoder. Max `TTS_MAX_UPLOAD_MB` (default 25 MB). |
 | `language` | string | no | Free-form informational tag stored with the voice and echoed by the catalog. |
 
 Status codes:
@@ -459,7 +459,7 @@ Custom voices live under `<cache_dir>/voices/`:
 └── jarvis1.safetensors
 ```
 
-- `POCKET_TTS_CACHE_DIR` defaults to `~/.cache/pocket_tts`; Docker uses
+- `TTS_CACHE_DIR` defaults to `~/.cache/pocket_tts`; Docker uses
   `/data/cache`.
 - `registry.json` is rewritten atomically (temp file + `os.replace`), so a crash
   never leaves a half-written index.
@@ -477,7 +477,7 @@ The same engine is also exposed over the [Wyoming protocol](https://github.com/r
 used by Home Assistant and Rhasspy. It is **opt-in**:
 
 ```bash
-POCKET_TTS_WYOMING_ENABLED=1 uv run tts-openai
+TTS_WYOMING_ENABLED=1 uv run tts-openai
 # listens on 0.0.0.0:10200 by default
 ```
 
@@ -500,7 +500,7 @@ or **Settings → Devices & Services → Add Integration → Wyoming Protocol**.
 | server → client | `info` | one TTS program, rebuilt on every `describe` |
 | client → server | `synthesize` | `text`, optional `voice.name` / `voice.speaker` |
 | server → client | `audio-start` | `rate` is **per voice** (16/22.05 kHz Piper, 24 kHz pocket) |
-| server → client | `audio-chunk` | raw mono s16le PCM, `POCKET_TTS_WYOMING_SAMPLES_PER_CHUNK` samples each |
+| server → client | `audio-chunk` | raw mono s16le PCM, `TTS_WYOMING_SAMPLES_PER_CHUNK` samples each |
 | server → client | `audio-stop` | end of the utterance |
 | client → server | `synthesize-start` / `synthesize-chunk`* / `synthesize-stop` | streaming text input |
 | server → client | `audio-start` / chunks / `audio-stop` per sentence, then `synthesize-stopped` | streaming audio output |
@@ -510,8 +510,8 @@ or **Settings → Devices & Services → Add Integration → Wyoming Protocol**.
 `info` advertises `supports_synthesize_streaming=true`. Plain `synthesize`
 already streams audio sentence by sentence: text is split with the same
 `sentence-stream` detector `wyoming-piper` uses, one `generate_pcm` call per
-sentence, and `POCKET_TTS_WYOMING_SENTENCE_SILENCE` seconds of silence between
-sentences. `POCKET_TTS_WYOMING_AUTO_PUNCTUATION` appends terminal punctuation
+sentence, and `TTS_WYOMING_SENTENCE_SILENCE` seconds of silence between
+sentences. `TTS_WYOMING_AUTO_PUNCTUATION` appends terminal punctuation
 to sentences that lack it (empty disables).
 
 **Voices and speakers.** Advertised voices are the default voice, installed
@@ -519,26 +519,26 @@ Piper voices, the Kyutai catalog (pocket), and custom (cloned) pocket voices.
 Aliases and any downloadable Piper id are still accepted in `voice.name` even
 if not listed. Piper multi-speaker voices advertise their `speaker_id_map`;
 select one with `voice.speaker` or set a default with
-`POCKET_TTS_PIPER_SPEAKER`. Unknown speaker names log a warning and fall back
+`TTS_PIPER_SPEAKER`. Unknown speaker names log a warning and fall back
 to the voice default. HA caches the `info` voice list: reload the Wyoming
 integration after adding/removing voices.
 
 Per-request `voice.speaker` maps to Piper's `SynthesisConfig.speaker_id`.
-`POCKET_TTS_PIPER_LENGTH_SCALE`, `POCKET_TTS_PIPER_NOISE_SCALE`, and
-`POCKET_TTS_PIPER_NOISE_W` mirror the Home Assistant Piper add-on options and
+`TTS_PIPER_LENGTH_SCALE`, `TTS_PIPER_NOISE_SCALE`, and
+`TTS_PIPER_NOISE_W` mirror the Home Assistant Piper add-on options and
 apply to **every** Piper synthesis path (HTTP and Wyoming); pocket-tts ignores
 them.
 
-**Discovery.** `POCKET_TTS_WYOMING_ZEROCONF=1` registers
+**Discovery.** `TTS_WYOMING_ZEROCONF=1` registers
 `_wyoming._tcp.local.` for Home Assistant auto-discovery, using
-`POCKET_TTS_WYOMING_NAME` as the instance name. mDNS from a Docker **bridge**
+`TTS_WYOMING_NAME` as the instance name. mDNS from a Docker **bridge**
 network usually does not reach the LAN: use host networking or add the
 integration manually with the host/port above.
 
 **Security.** Wyoming has no authentication or encryption by design. It is
 meant for a trusted LAN; do not publish port 10200 to the internet.
-`POCKET_TTS_API_KEY` guards `/v1/*` **only** — it does not apply to Wyoming.
-Bind to a private interface with `POCKET_TTS_WYOMING_HOST=127.0.0.1` if only
+`TTS_API_KEY` guards `/v1/*` **only** — it does not apply to Wyoming.
+Bind to a private interface with `TTS_WYOMING_HOST=127.0.0.1` if only
 local clients should connect.
 
 **Differences from `wyoming-piper`.** This server advertises only installed
@@ -573,15 +573,15 @@ FastAPI request-validation failures (`422`) instead use the standard
 | `404` | Unknown custom voice on `DELETE`. |
 | `405` | Attempt to delete a built-in voice. |
 | `409` | Cloned-voice name collision. |
-| `413` | Voice-prompt upload over `POCKET_TTS_MAX_UPLOAD_MB`. |
+| `413` | Voice-prompt upload over `TTS_MAX_UPLOAD_MB`. |
 | `422` | FastAPI request validation (for example an unknown `response_format`, missing multipart field, or malformed body). |
-| `429` | Load shedding: `POCKET_TTS_MAX_WAITING` exceeded, or `POCKET_TTS_QUEUE_TIMEOUT_S` expired waiting for the generation lock. |
+| `429` | Load shedding: `TTS_MAX_WAITING` exceeded, or `TTS_QUEUE_TIMEOUT_S` expired waiting for the generation lock. |
 | `501` | Voice cloning requested on the Piper backend. |
 | `503` | Engine not loaded yet. `/v1/audio/speech` and cloning return this until the background load succeeds. |
 
 #### API key
 
-Set `POCKET_TTS_API_KEY` to require:
+Set `TTS_API_KEY` to require:
 
 ```text
 Authorization: Bearer <key>
@@ -637,7 +637,7 @@ full auth system: use TLS and a real gateway for public deployments.
 - stores `config` in `app.state.config`;
 - registers the OpenAI-shaped `OpenAIError` exception handler;
 - mounts the `/v1` aggregate router (guarded by the `verify_api_key` dependency
-  when `POCKET_TTS_API_KEY` is set) and the public `/health` router;
+  when `TTS_API_KEY` is set) and the public `/health` router;
 - the `/v1` router includes `routers/audio.py`, `routers/models.py`, and
   `routers/voices.py`.
 
@@ -647,9 +647,9 @@ Production calls `create_app(config)` with no engine. During lifespan startup:
 2. a daemon thread runs `_load_engine_background`, which calls `load_engine`,
    stores the result, logs backend/default voice/sample rate, and runs
    `engine.warmup()`;
-3. if `POCKET_TTS_IDLE_UNLOAD_S > 0`, a second daemon thread runs the idle
+3. if `TTS_IDLE_UNLOAD_S > 0`, a second daemon thread runs the idle
    watchdog;
-4. if `POCKET_TTS_WYOMING_ENABLED=1`, `main.py` starts the Wyoming TCP listener
+4. if `TTS_WYOMING_ENABLED=1`, `main.py` starts the Wyoming TCP listener
    in the same event loop; handlers share the single engine and wait for its
    background load before answering `describe`/`synthesize`.
 
@@ -733,7 +733,7 @@ Resolution is backend-specific:
   it.
 - Missing voices are downloaded on first use from
   [`rhasspy/piper-voices`](https://huggingface.co/rhasspy/piper-voices) unless
-  `POCKET_TTS_PIPER_AUTO_DOWNLOAD=false`.
+  `TTS_PIPER_AUTO_DOWNLOAD=false`.
 - `generate_audio` concatenates Piper's per-sentence chunks; streaming yields
   one chunk per sentence.
 
@@ -751,14 +751,14 @@ The engine caches encoded voice states in an LRU. The default size is:
 - **Piper: 2** — each entry is a whole ONNX session (~60–110 MB).
 - **pocket-tts: 32** — entries are lightweight-ish model-state snapshots.
 
-`POCKET_TTS_MAX_CACHED_VOICES` overrides this for either backend.
+`TTS_MAX_CACHED_VOICES` overrides this for either backend.
 
 `sample_rate_for(voice)` is always used for response headers and ffmpeg input;
 never assume the model-wide `sample_rate` is correct for a Piper request.
 
 ### Idle eviction
 
-After `POCKET_TTS_IDLE_UNLOAD_S` (default 300 s) with no API request:
+After `TTS_IDLE_UNLOAD_S` (default 300 s) with no API request:
 
 1. the watchdog checks the idle age;
 2. it tries to acquire `_gen_lock` **non-blocking**; if a generation or stream
@@ -871,44 +871,45 @@ Piper-vs-pocket and end-to-end TTS→STT benchmarks.
 ## Configuration
 
 Every setting is optional and read from the environment by `Config.from_env()`.
-Invalid `POCKET_TTS_*` integers/floats raise a `ValueError` at startup rather
+Invalid `TTS_*` integers/floats raise a `ValueError` at startup rather
 than silently falling back. Booleans accept `1`, `true`, `yes`, `on`
-(case-insensitive), except `POCKET_TTS_QUANTIZE`, which accepts `1`, `true`, or
+(case-insensitive), except `TTS_QUANTIZE`, which accepts `1`, `true`, or
 `yes`.
 
 | Variable | Default | Applies to | Description |
 | --- | --- | --- | --- |
-| `POCKET_TTS_BACKEND` | `piper` | both | `piper` or `pocket`. Anything else fails startup. |
-| `POCKET_TTS_HOST` | `127.0.0.1` | both | uvicorn bind host. Docker overrides to `0.0.0.0`. |
-| `POCKET_TTS_PORT` | `8000` | both | uvicorn bind port and healthcheck port. |
-| `POCKET_TTS_DEFAULT_VOICE` | backend default | both | Voice used when the request omits `voice`. Empty → backend default (`it_IT-paola-medium` / `alloy`). |
-| `POCKET_TTS_VOICE_MAP` | backend defaults | both | Comma-separated `alias=voice` overrides, merged over the default alias map. A bare value raises `ValueError`. |
-| `POCKET_TTS_LANGUAGE` | `english` | pocket | pocket-tts model language, e.g. `english`, `italian`, `italian_24l`, `french_24l`. Ignored by Piper, which derives language from the voice id. |
-| `POCKET_TTS_QUANTIZE` | `false` | pocket | Load transformer attention/FFN weights as int8 (dynamic quantization; requires AVX2 on x86). ~62% less RSS and ~27% faster in measurements. |
-| `POCKET_TTS_MAX_CACHED_VOICES` | `2` Piper / `32` pocket | both | Voice-state LRU size. A Piper entry is a whole ONNX session. |
-| `POCKET_TTS_PIPER_VOICE_DIR` | `~/.cache/piper` | piper | Directory for downloaded `.onnx` + `.onnx.json` pairs. Docker uses `/data/cache/piper`. |
-| `POCKET_TTS_PIPER_AUTO_DOWNLOAD` | `true` | piper | Download missing Piper voices on first use. When false, missing voices return `400`. |
-| `POCKET_TTS_WARMUP_VOICES` | *(empty)* | both | Comma-separated voices to load/encode at startup and after every reload. Warmup failures are logged, not fatal. |
-| `POCKET_TTS_CACHE_DIR` | `~/.cache/pocket_tts` | pocket | Base directory for the custom-voice registry (`<dir>/voices`). Docker uses `/data/cache`. |
-| `POCKET_TTS_MAX_UPLOAD_MB` | `25` | pocket | Maximum voice-cloning prompt upload. Does not limit `input` text. |
-| `POCKET_TTS_IDLE_UNLOAD_S` | `300` | both | Evict the model from RAM after this many idle seconds. `0` keeps it resident. Next request blocks during reload. |
-| `POCKET_TTS_IDLE_POLL_S` | `30` | both | Idle watchdog poll interval. Effective interval is capped at `max(5, idle_unload_s // 2)`. |
-| `POCKET_TTS_MAX_WAITING` | `0` | both | Load shedding: return OpenAI `429` when more than this many requests are already inside the critical path (encode + wait + generate). `0` = unlimited. |
-| `POCKET_TTS_QUEUE_TIMEOUT_S` | `0` | both | Maximum seconds a request waits for the generation lock before `429`. Accepts fractions. `0` = wait forever. |
-| `POCKET_TTS_API_KEY` | *(unset)* | both | If set, require `Authorization: Bearer <key>` on `/v1/*`. `/health` remains public. |
-| `POCKET_TTS_PIPER_SPEAKER` | *(unset)* | piper | Default speaker name or numeric id for multi-speaker Piper voices. Unknown names fall back to the voice default. |
-| `POCKET_TTS_PIPER_LENGTH_SCALE` | *(voice default)* | piper | Speaking-rate scale: `<1` faster, `>1` slower. Also affects HTTP synthesis. |
-| `POCKET_TTS_PIPER_NOISE_SCALE` | *(voice default)* | piper | Generator noise scale (HA add-on `noise_scale`). |
-| `POCKET_TTS_PIPER_NOISE_W` | *(voice default)* | piper | Phoneme-width noise scale (HA add-on `noise_w`). |
-| `POCKET_TTS_WYOMING_ENABLED` | `false` | both | Enable the Wyoming TTS listener. Unauthenticated by protocol design; use a trusted network. |
-| `POCKET_TTS_WYOMING_HOST` | `0.0.0.0` | both | Wyoming bind host. `127.0.0.1` limits it to local clients. |
-| `POCKET_TTS_WYOMING_PORT` | `10200` | both | Wyoming TCP port. |
-| `POCKET_TTS_WYOMING_SAMPLES_PER_CHUNK` | `1024` | both | Mono s16 samples per `audio-chunk` (2048 bytes at the default). |
-| `POCKET_TTS_WYOMING_SENTENCE_SILENCE` | `0.0` | both | Seconds of silence inserted between sentences. |
-| `POCKET_TTS_WYOMING_AUTO_PUNCTUATION` | `.?!。？！．؟` | both | Append the first character when a sentence lacks terminal punctuation. Empty disables. |
-| `POCKET_TTS_WYOMING_ZEROCONF` | `false` | both | Register `_wyoming._tcp.local.` for Home Assistant auto-discovery. |
-| `POCKET_TTS_WYOMING_NAME` | `tts-openai` | both | mDNS instance name used with `POCKET_TTS_WYOMING_ZEROCONF=1`. |
-| `POCKET_TTS_WYOMING_READY_TIMEOUT_S` | `60` | both | How long `describe`/`synthesize` wait for the background model load before returning an error event. `0` fails fast. |
+| `TTS_BACKEND` | `piper` | both | `piper` or `pocket`. Anything else fails startup. |
+| `TTS_HOST` | `127.0.0.1` | both | uvicorn bind host. Docker overrides to `0.0.0.0`. |
+| `TTS_PORT` | `8000` | both | uvicorn bind port and healthcheck port. |
+| `TTS_LOG_LEVEL` | `info` | both | Python/uvicorn log level: `debug`, `info`, `warning`, `error`, `critical`. `debug` also logs per-request `/v1/audio/speech` details. Successful `/health` probes are never access-logged; failing ones are. |
+| `TTS_DEFAULT_VOICE` | backend default | both | Voice used when the request omits `voice`. Empty → backend default (`it_IT-paola-medium` / `alloy`). |
+| `TTS_VOICE_MAP` | backend defaults | both | Comma-separated `alias=voice` overrides, merged over the default alias map. A bare value raises `ValueError`. |
+| `TTS_LANGUAGE` | `english` | pocket | pocket-tts model language, e.g. `english`, `italian`, `italian_24l`, `french_24l`. Ignored by Piper, which derives language from the voice id. |
+| `TTS_QUANTIZE` | `false` | pocket | Load transformer attention/FFN weights as int8 (dynamic quantization; requires AVX2 on x86). ~62% less RSS and ~27% faster in measurements. |
+| `TTS_MAX_CACHED_VOICES` | `2` Piper / `32` pocket | both | Voice-state LRU size. A Piper entry is a whole ONNX session. |
+| `TTS_PIPER_VOICE_DIR` | `~/.cache/piper` | piper | Directory for downloaded `.onnx` + `.onnx.json` pairs. Docker uses `/data/cache/piper`. |
+| `TTS_PIPER_AUTO_DOWNLOAD` | `true` | piper | Download missing Piper voices on first use. When false, missing voices return `400`. |
+| `TTS_WARMUP_VOICES` | *(empty)* | both | Comma-separated voices to load/encode at startup and after every reload. Warmup failures are logged, not fatal. |
+| `TTS_CACHE_DIR` | `~/.cache/pocket_tts` | pocket | Base directory for the custom-voice registry (`<dir>/voices`). Docker uses `/data/cache`. |
+| `TTS_MAX_UPLOAD_MB` | `25` | pocket | Maximum voice-cloning prompt upload. Does not limit `input` text. |
+| `TTS_IDLE_UNLOAD_S` | `300` | both | Evict the model from RAM after this many idle seconds. `0` keeps it resident. Next request blocks during reload. |
+| `TTS_IDLE_POLL_S` | `30` | both | Idle watchdog poll interval. Effective interval is capped at `max(5, idle_unload_s // 2)`. |
+| `TTS_MAX_WAITING` | `0` | both | Load shedding: return OpenAI `429` when more than this many requests are already inside the critical path (encode + wait + generate). `0` = unlimited. |
+| `TTS_QUEUE_TIMEOUT_S` | `0` | both | Maximum seconds a request waits for the generation lock before `429`. Accepts fractions. `0` = wait forever. |
+| `TTS_API_KEY` | *(unset)* | both | If set, require `Authorization: Bearer <key>` on `/v1/*`. `/health` remains public. |
+| `TTS_PIPER_SPEAKER` | *(unset)* | piper | Default speaker name or numeric id for multi-speaker Piper voices. Unknown names fall back to the voice default. |
+| `TTS_PIPER_LENGTH_SCALE` | *(voice default)* | piper | Speaking-rate scale: `<1` faster, `>1` slower. Also affects HTTP synthesis. |
+| `TTS_PIPER_NOISE_SCALE` | *(voice default)* | piper | Generator noise scale (HA add-on `noise_scale`). |
+| `TTS_PIPER_NOISE_W` | *(voice default)* | piper | Phoneme-width noise scale (HA add-on `noise_w`). |
+| `TTS_WYOMING_ENABLED` | `false` | both | Enable the Wyoming TTS listener. Unauthenticated by protocol design; use a trusted network. |
+| `TTS_WYOMING_HOST` | `0.0.0.0` | both | Wyoming bind host. `127.0.0.1` limits it to local clients. |
+| `TTS_WYOMING_PORT` | `10200` | both | Wyoming TCP port. |
+| `TTS_WYOMING_SAMPLES_PER_CHUNK` | `1024` | both | Mono s16 samples per `audio-chunk` (2048 bytes at the default). |
+| `TTS_WYOMING_SENTENCE_SILENCE` | `0.0` | both | Seconds of silence inserted between sentences. |
+| `TTS_WYOMING_AUTO_PUNCTUATION` | `.?!。？！．؟` | both | Append the first character when a sentence lacks terminal punctuation. Empty disables. |
+| `TTS_WYOMING_ZEROCONF` | `false` | both | Register `_wyoming._tcp.local.` for Home Assistant auto-discovery. |
+| `TTS_WYOMING_NAME` | `tts-openai` | both | mDNS instance name used with `TTS_WYOMING_ZEROCONF=1`. |
+| `TTS_WYOMING_READY_TIMEOUT_S` | `60` | both | How long `describe`/`synthesize` wait for the background model load before returning an error event. `0` fails fast. |
 
 External variables used by the engines:
 
@@ -922,45 +923,46 @@ External variables used by the engines:
 
 ```sh
 # --- server ---
-# POCKET_TTS_BACKEND=piper
-# POCKET_TTS_HOST=127.0.0.1
-# POCKET_TTS_PORT=8000
-# POCKET_TTS_API_KEY=change-me
+# TTS_BACKEND=piper
+# TTS_HOST=127.0.0.1
+# TTS_PORT=8000
+# TTS_LOG_LEVEL=info
+# TTS_API_KEY=change-me
 
 # --- Wyoming TTS (Home Assistant / Rhasspy) ---
-# POCKET_TTS_WYOMING_ENABLED=0
-# POCKET_TTS_WYOMING_HOST=0.0.0.0
-# POCKET_TTS_WYOMING_PORT=10200
-# POCKET_TTS_WYOMING_NAME=tts-openai
-# POCKET_TTS_WYOMING_ZEROCONF=0
-# POCKET_TTS_WYOMING_SAMPLES_PER_CHUNK=1024
-# POCKET_TTS_WYOMING_SENTENCE_SILENCE=0.0
-# POCKET_TTS_WYOMING_AUTO_PUNCTUATION=.?!。？！．؟
-# POCKET_TTS_WYOMING_READY_TIMEOUT_S=60
+# TTS_WYOMING_ENABLED=0
+# TTS_WYOMING_HOST=0.0.0.0
+# TTS_WYOMING_PORT=10200
+# TTS_WYOMING_NAME=tts-openai
+# TTS_WYOMING_ZEROCONF=0
+# TTS_WYOMING_SAMPLES_PER_CHUNK=1024
+# TTS_WYOMING_SENTENCE_SILENCE=0.0
+# TTS_WYOMING_AUTO_PUNCTUATION=.?!。？！．؟
+# TTS_WYOMING_READY_TIMEOUT_S=60
 
 # --- backend / voices ---
-# POCKET_TTS_DEFAULT_VOICE=it_IT-paola-medium
-# POCKET_TTS_VOICE_MAP=alloy=en_US-lessac-medium
-# POCKET_TTS_WARMUP_VOICES=jarvis1
-# POCKET_TTS_LANGUAGE=italian_24l
-# POCKET_TTS_QUANTIZE=1
-# POCKET_TTS_MAX_CACHED_VOICES=2
-# POCKET_TTS_PIPER_VOICE_DIR=/data/cache/piper
-# POCKET_TTS_PIPER_AUTO_DOWNLOAD=true
-# POCKET_TTS_PIPER_SPEAKER=0
-# POCKET_TTS_PIPER_LENGTH_SCALE=1.0
-# POCKET_TTS_PIPER_NOISE_SCALE=0.667
-# POCKET_TTS_PIPER_NOISE_W=0.333
+# TTS_DEFAULT_VOICE=it_IT-paola-medium
+# TTS_VOICE_MAP=alloy=en_US-lessac-medium
+# TTS_WARMUP_VOICES=jarvis1
+# TTS_LANGUAGE=italian_24l
+# TTS_QUANTIZE=1
+# TTS_MAX_CACHED_VOICES=2
+# TTS_PIPER_VOICE_DIR=/data/cache/piper
+# TTS_PIPER_AUTO_DOWNLOAD=true
+# TTS_PIPER_SPEAKER=0
+# TTS_PIPER_LENGTH_SCALE=1.0
+# TTS_PIPER_NOISE_SCALE=0.667
+# TTS_PIPER_NOISE_W=0.333
 
 # --- cache / uploads ---
-# POCKET_TTS_CACHE_DIR=/data/cache
-# POCKET_TTS_MAX_UPLOAD_MB=25
+# TTS_CACHE_DIR=/data/cache
+# TTS_MAX_UPLOAD_MB=25
 
 # --- lifecycle / load shedding ---
-# POCKET_TTS_IDLE_UNLOAD_S=300
-# POCKET_TTS_IDLE_POLL_S=30
-# POCKET_TTS_MAX_WAITING=0
-# POCKET_TTS_QUEUE_TIMEOUT_S=0
+# TTS_IDLE_UNLOAD_S=300
+# TTS_IDLE_POLL_S=30
+# TTS_MAX_WAITING=0
+# TTS_QUEUE_TIMEOUT_S=0
 
 # --- external ---
 # HF_HOME=/data/hf
@@ -990,18 +992,18 @@ Default alias maps:
 
 `coral` is a project extension, not an OpenAI voice. On Piper every OpenAI alias
 intentionally points at the same Italian voice; override individual aliases with
-`POCKET_TTS_VOICE_MAP`.
+`TTS_VOICE_MAP`.
 
 ### Important configuration precedence
 
-- Per-request `voice` → `POCKET_TTS_DEFAULT_VOICE` / backend default.
-- `POCKET_TTS_VOICE_MAP` overrides merge over (not replace) the default alias
+- Per-request `voice` → `TTS_DEFAULT_VOICE` / backend default.
+- `TTS_VOICE_MAP` overrides merge over (not replace) the default alias
   map.
-- `POCKET_TTS_BACKEND=pocket` requires both the engine extra installed and the
+- `TTS_BACKEND=pocket` requires both the engine extra installed and the
   model language downloaded/gated appropriately.
-- `POCKET_TTS_LANGUAGE` and `POCKET_TTS_QUANTIZE` are pocket-only; Piper ignores
+- `TTS_LANGUAGE` and `TTS_QUANTIZE` are pocket-only; Piper ignores
   them.
-- `POCKET_TTS_PIPER_*` settings are Piper-only; pocket ignores them.
+- `TTS_PIPER_*` settings are Piper-only; pocket ignores them.
 
 ---
 
@@ -1046,7 +1048,7 @@ Language tags for non-English catalog voices: `giovanni` (it), `lola` (es),
 `en` in the catalog metadata.
 
 Piper takes its language from the voice id; pocket takes it from
-`POCKET_TTS_LANGUAGE` (the model), not from the voice name.
+`TTS_LANGUAGE` (the model), not from the voice name.
 
 ### The bundled `jarvis1` voice
 
@@ -1063,9 +1065,9 @@ The repository ships one pre-cloned Italian voice:
 Serve it with the pocket backend:
 
 ```bash
-POCKET_TTS_BACKEND=pocket \
-POCKET_TTS_LANGUAGE=italian_24l \
-POCKET_TTS_WARMUP_VOICES=jarvis1 \
+TTS_BACKEND=pocket \
+TTS_LANGUAGE=italian_24l \
+TTS_WARMUP_VOICES=jarvis1 \
 uv run tts-openai
 ```
 
@@ -1088,7 +1090,7 @@ itself is ours and needs no token.
   of concatenated speech.
 - The cloned voice is tied to the model language it was encoded from. A voice
   cloned under `italian_24l` is not meaningful under `english`.
-- Pre-encode at boot with `POCKET_TTS_WARMUP_VOICES=name` if first-request
+- Pre-encode at boot with `TTS_WARMUP_VOICES=name` if first-request
   latency matters.
 
 ---
@@ -1123,16 +1125,16 @@ Piper:
 
 - `it_IT-paola-medium` is 64 MB on disk and ~171 MB resident when loaded.
 - Each cached Piper voice is a separate ONNX session, hence the small LRU
-  default (`POCKET_TTS_MAX_CACHED_VOICES=2`).
+  default (`TTS_MAX_CACHED_VOICES=2`).
 
 pocket-tts:
 
 - Each language has a base model (6-layer, ~430 MB download); some languages
   offer larger `_24l` quality variants. There is no smaller `tiny`/`nano` tier.
-- `POCKET_TTS_QUANTIZE=1` loads attention/FFN weights as int8 (dynamic
+- `TTS_QUANTIZE=1` loads attention/FFN weights as int8 (dynamic
   quantization, FBGEMM on x86, requires AVX2):
 
-| `POCKET_TTS_QUANTIZE` | Resident RSS |
+| `TTS_QUANTIZE` | Resident RSS |
 | --- | ---: |
 | `false` (default) | ~1,042 MB |
 | `1` | ~395 MB (≈62% less) |
@@ -1248,11 +1250,11 @@ RUN apt-get update \
 ENV PATH="/app/.venv/bin:$PATH" \
     UV_PYTHON_DOWNLOADS=0 \
     PYTHONUNBUFFERED=1 \
-    POCKET_TTS_BACKEND=piper \
-    POCKET_TTS_HOST=0.0.0.0 \
-    POCKET_TTS_PORT=8000 \
-    POCKET_TTS_CACHE_DIR=/data/cache \
-    POCKET_TTS_PIPER_VOICE_DIR=/data/cache/piper \
+    TTS_BACKEND=piper \
+    TTS_HOST=0.0.0.0 \
+    TTS_PORT=8000 \
+    TTS_CACHE_DIR=/data/cache \
+    TTS_PIPER_VOICE_DIR=/data/cache/piper \
     HF_HOME=/data/hf
 WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
@@ -1324,11 +1326,11 @@ services:
       - "8080:8000"
       - "10200:10200"   # Wyoming
     environment:
-      - POCKET_TTS_HOST=0.0.0.0
-      - POCKET_TTS_PORT=8000
-      - POCKET_TTS_WYOMING_ENABLED=1
-      - POCKET_TTS_BACKEND=piper
-      - POCKET_TTS_DEFAULT_VOICE=it_IT-paola-medium
+      - TTS_HOST=0.0.0.0
+      - TTS_PORT=8000
+      - TTS_WYOMING_ENABLED=1
+      - TTS_BACKEND=piper
+      - TTS_DEFAULT_VOICE=it_IT-paola-medium
       # ...commented knobs...
     volumes:
       - tts-data:/data
@@ -1349,13 +1351,13 @@ volumes:
   to `"1"` for the pocket backend and jarvis1 seeding.
 - **`PIPER_VOICE` is not exposed by the Compose file.** To bake a different
   voice, add it under `build.args` (or use `docker build --build-arg`), and set
-  `POCKET_TTS_DEFAULT_VOICE`/`POCKET_TTS_VOICE_MAP` accordingly so runtime
+  `TTS_DEFAULT_VOICE`/`TTS_VOICE_MAP` accordingly so runtime
   requests actually use it.
 - **Ports** `8080:8000` (HTTP) and `10200:10200` (Wyoming).
 - **Active environment** mirrors the image defaults: host, port, Piper backend,
   Paola. All other knobs are commented; uncomment and edit them to change
   behaviour.
-- **`POCKET_TTS_BACKEND=pocket`** only works if the image was built with
+- **`TTS_BACKEND=pocket`** only works if the image was built with
   `WITH_POCKET=1`.
 - **Volume** `tts-data:/data` persists Piper voices, pocket weights, and cloned
   voices. Without it, a new container re-downloads voices and loses custom
@@ -1372,16 +1374,16 @@ docker build -f deploy/Dockerfile -t tts-openai .
 
 # Run, mapping host 8080 -> container 8000
 docker run --rm -p 8080:8000 -p 10200:10200 \
-  -e POCKET_TTS_WYOMING_ENABLED=1 \
+  -e TTS_WYOMING_ENABLED=1 \
   -v tts-data:/data tts-openai
 
 # Pocket-enabled image
 docker build -f deploy/Dockerfile --build-arg WITH_POCKET=1 -t tts-pocket .
 
 docker run --rm -p 8080:8000 -p 10200:10200 \
-  -e POCKET_TTS_WYOMING_ENABLED=1 \
-  -e POCKET_TTS_BACKEND=pocket \
-  -e POCKET_TTS_LANGUAGE=italian_24l \
+  -e TTS_WYOMING_ENABLED=1 \
+  -e TTS_BACKEND=pocket \
+  -e TTS_LANGUAGE=italian_24l \
   -v tts-data:/data \
   tts-pocket
 
@@ -1391,8 +1393,8 @@ docker build -f deploy/Dockerfile \
   -t tts-en .
 
 docker run --rm -p 8080:8000 -p 10200:10200 \
-  -e POCKET_TTS_WYOMING_ENABLED=1 \
-  -e POCKET_TTS_DEFAULT_VOICE=en_US-lessac-medium \
+  -e TTS_WYOMING_ENABLED=1 \
+  -e TTS_DEFAULT_VOICE=en_US-lessac-medium \
   -v tts-data:/data \
   tts-en
 ```
@@ -1433,7 +1435,7 @@ does not run the optional real-backend e2e tests.
 - The engine is still loading. `/health` says `loading`.
 - If it persists, inspect logs for an engine import failure (missing
   `--extra piper`/`--extra engine`) or a failed voice/model download.
-- In Docker, the default image has Piper only; `POCKET_TTS_BACKEND=pocket`
+- In Docker, the default image has Piper only; `TTS_BACKEND=pocket`
   without `WITH_POCKET=1` will fail to import pocket-tts.
 
 ### First request is slow
@@ -1443,14 +1445,14 @@ does not run the optional real-backend e2e tests.
   voice encodes/caches a prompt state.
 - After idle eviction, the first request reloads the model (Piper: under a
   second warm; pocket: ~1 s warm; cold downloads can take much longer).
-- Use `POCKET_TTS_WARMUP_VOICES` to preload hot voices at boot.
+- Use `TTS_WARMUP_VOICES` to preload hot voices at boot.
 
 ### `429` responses
 
 - Lower concurrency pressure from the client, or raise
-  `POCKET_TTS_MAX_WAITING`.
+  `TTS_MAX_WAITING`.
 - If requests wait too long for the generation lock, set a finite
-  `POCKET_TTS_QUEUE_TIMEOUT_S`.
+  `TTS_QUEUE_TIMEOUT_S`.
 - Remember that one long stream holds the generation lock for its entire
   duration. Streaming is not parallel generation.
 
@@ -1469,7 +1471,7 @@ no token.
 
 ### Cloned voice is not usable / wrong language
 
-- Ensure `POCKET_TTS_BACKEND=pocket` (Piper has no cloning).
+- Ensure `TTS_BACKEND=pocket` (Piper has no cloning).
 - Use the same model language the voice was encoded from (`italian_24l` for
   `jarvis1`).
 - Verify `GET /v1/voices` lists it as `source: "custom"`.
@@ -1486,7 +1488,7 @@ no token.
 
 ### Security
 
-- Set `POCKET_TTS_API_KEY` for private deployments, but terminate TLS and add
+- Set `TTS_API_KEY` for private deployments, but terminate TLS and add
   real rate limiting at a gateway.
 - The built-in check is a simple exact Bearer comparison; it is not a full auth
   system.
@@ -1507,7 +1509,7 @@ uv run pytest tests/test_engine.py::test_generation_is_serialized   # one test
 uv sync --extra piper   # + Piper, needed to synthesize locally
 uv sync --extra engine  # + pocket-tts and CPU torch (large, optional)
 uv run tts-openai
-POCKET_TTS_BACKEND=pocket uv run tts-openai
+TTS_BACKEND=pocket uv run tts-openai
 ```
 
 The test suite does not need either engine: `tests/conftest.py` injects a fake
@@ -1524,7 +1526,7 @@ cost.
 - **Opt-in real-backend e2e**:
   - `PIPER_E2E=1 uv run pytest -m e2e -v`
     (`tests/test_integration_piper.py`, downloads the 64 MB default voice).
-  - `POCKET_TTS_E2E=1 uv run pytest -m e2e -v`
+  - `TTS_E2E=1 uv run pytest -m e2e -v`
     (`tests/test_integration.py`, downloads pocket weights).
   Both boot a real uvicorn server.
 - **ffmpeg-dependent tests** skip cleanly when ffmpeg is absent.
@@ -1563,13 +1565,13 @@ Docker pin).
   format explicitly.
 - **No built-in web UI.** Custom voices are managed via HTTP or CLI.
 - **Wyoming is unauthenticated.** The protocol has no auth/encryption and
-  `POCKET_TTS_API_KEY` does not apply; keep port 10200 on a trusted network.
+  `TTS_API_KEY` does not apply; keep port 10200 on a trusted network.
 - **Wyoming advertises installed Piper voices only.** There is no static
   `voices.json` catalog; any valid Piper id is still downloaded on demand when a
   client requests it.
 - **Cloning is pocket-only.** Piper returns `501`.
 - **Cloned voices are model-language-specific.** Use the same
-  `POCKET_TTS_LANGUAGE` used to encode the prompt.
+  `TTS_LANGUAGE` used to encode the prompt.
 - **Pocket prompt decoding may need `soundfile`** for MP3/FLAC uploads; 16-bit
   PCM WAV is the safest format.
 - **Missing ffmpeg in streaming mode fails after headers**, not as an upfront

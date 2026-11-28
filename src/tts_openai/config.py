@@ -24,7 +24,7 @@ def _split_voice_map(raw: str) -> dict[str, str]:
         if not pair:
             continue
         if "=" not in pair:
-            raise ValueError(f"POCKET_TTS_VOICE_MAP entry must be `alias=voice`, got: {pair!r}")
+            raise ValueError(f"TTS_VOICE_MAP entry must be `alias=voice`, got: {pair!r}")
         alias, voice = pair.split("=", 1)
         out[alias.strip()] = voice.strip()
     return out
@@ -68,11 +68,15 @@ def _env_bool(env: dict[str, str], key: str, default: bool) -> bool:
     return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
+LOG_LEVELS = ("debug", "info", "warning", "error", "critical")
+
+
 @dataclass(frozen=True)
 class Config:
     backend: str = "piper"
     host: str = "127.0.0.1"
     port: int = 8000
+    log_level: str = "info"  # tts_openai + uvicorn log level: debug/info/warning/error/critical
     # Pocket-specific: Piper takes its language from the voice id instead.
     language: str = "english"
     default_voice: str = ""  # empty = backend default (piper: it_IT-paola-medium)
@@ -110,81 +114,88 @@ class Config:
         backend = self.backend.strip().lower()
         if backend not in BACKENDS:
             raise ValueError(
-                f"POCKET_TTS_BACKEND must be one of {', '.join(BACKENDS)}, got: {self.backend!r}"
+                f"TTS_BACKEND must be one of {', '.join(BACKENDS)}, got: {self.backend!r}"
             )
         object.__setattr__(self, "backend", backend)
+        log_level = self.log_level.strip().lower()
+        if log_level not in LOG_LEVELS:
+            raise ValueError(
+                f"TTS_LOG_LEVEL must be one of {', '.join(LOG_LEVELS)}, got: {self.log_level!r}"
+            )
+        object.__setattr__(self, "log_level", log_level)
         if not self.voice_map:
             object.__setattr__(self, "voice_map", backend_default_aliases(backend))
         if not self.default_voice:
             object.__setattr__(self, "default_voice", backend_default_voice(backend))
         if self.wyoming_samples_per_chunk <= 0:
             raise ValueError(
-                "POCKET_TTS_WYOMING_SAMPLES_PER_CHUNK must be greater than 0, "
+                "TTS_WYOMING_SAMPLES_PER_CHUNK must be greater than 0, "
                 f"got: {self.wyoming_samples_per_chunk}"
             )
         if self.wyoming_sentence_silence < 0:
             raise ValueError(
-                "POCKET_TTS_WYOMING_SENTENCE_SILENCE must be >= 0, "
+                "TTS_WYOMING_SENTENCE_SILENCE must be >= 0, "
                 f"got: {self.wyoming_sentence_silence}"
             )
         if not (0 <= self.wyoming_port <= 65535):
             raise ValueError(
-                f"POCKET_TTS_WYOMING_PORT must be between 0 and 65535, got: {self.wyoming_port}"
+                f"TTS_WYOMING_PORT must be between 0 and 65535, got: {self.wyoming_port}"
             )
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> "Config":
         env = dict(os.environ if env is None else env)
-        backend = env.get("POCKET_TTS_BACKEND", "piper").strip().lower()
+        backend = env.get("TTS_BACKEND", "piper").strip().lower()
         voice_map = backend_default_aliases(backend) if backend in BACKENDS else {}
-        if raw := env.get("POCKET_TTS_VOICE_MAP", ""):
+        if raw := env.get("TTS_VOICE_MAP", ""):
             voice_map.update(_split_voice_map(raw))
         warmup = tuple(
-            v.strip() for v in env.get("POCKET_TTS_WARMUP_VOICES", "").split(",") if v.strip()
+            v.strip() for v in env.get("TTS_WARMUP_VOICES", "").split(",") if v.strip()
         )
         max_cached = (
-            _env_int(env, "POCKET_TTS_MAX_CACHED_VOICES", 32)
-            if "POCKET_TTS_MAX_CACHED_VOICES" in env and env["POCKET_TTS_MAX_CACHED_VOICES"]
+            _env_int(env, "TTS_MAX_CACHED_VOICES", 32)
+            if "TTS_MAX_CACHED_VOICES" in env and env["TTS_MAX_CACHED_VOICES"]
             else None
         )
         return cls(
             backend=backend,
-            host=env.get("POCKET_TTS_HOST", "127.0.0.1"),
-            port=_env_int(env, "POCKET_TTS_PORT", 8000),
-            language=env.get("POCKET_TTS_LANGUAGE", "english"),
-            default_voice=env.get("POCKET_TTS_DEFAULT_VOICE", ""),
+            host=env.get("TTS_HOST", "127.0.0.1"),
+            port=_env_int(env, "TTS_PORT", 8000),
+            log_level=env.get("TTS_LOG_LEVEL", "info"),
+            language=env.get("TTS_LANGUAGE", "english"),
+            default_voice=env.get("TTS_DEFAULT_VOICE", ""),
             voice_map=voice_map,
-            api_key=env.get("POCKET_TTS_API_KEY") or None,
+            api_key=env.get("TTS_API_KEY") or None,
             warmup_voices=warmup,
-            quantize=env.get("POCKET_TTS_QUANTIZE", "").lower() in ("1", "true", "yes"),
+            quantize=env.get("TTS_QUANTIZE", "").lower() in ("1", "true", "yes"),
             max_cached_voices=max_cached,
-            cache_dir=env.get("POCKET_TTS_CACHE_DIR", ""),
-            piper_voice_dir=env.get("POCKET_TTS_PIPER_VOICE_DIR", ""),
-            piper_auto_download=_env_bool(env, "POCKET_TTS_PIPER_AUTO_DOWNLOAD", True),
-            max_upload_mb=_env_int(env, "POCKET_TTS_MAX_UPLOAD_MB", 25),
-            idle_unload_s=_env_int(env, "POCKET_TTS_IDLE_UNLOAD_S", 300),
-            idle_poll_s=_env_int(env, "POCKET_TTS_IDLE_POLL_S", 30),
-            max_waiting=_env_int(env, "POCKET_TTS_MAX_WAITING", 0),
-            queue_timeout_s=_env_float(env, "POCKET_TTS_QUEUE_TIMEOUT_S", 0.0),
-            wyoming_enabled=_env_bool(env, "POCKET_TTS_WYOMING_ENABLED", False),
-            wyoming_host=env.get("POCKET_TTS_WYOMING_HOST", "0.0.0.0"),
-            wyoming_port=_env_int(env, "POCKET_TTS_WYOMING_PORT", 10200),
+            cache_dir=env.get("TTS_CACHE_DIR", ""),
+            piper_voice_dir=env.get("TTS_PIPER_VOICE_DIR", ""),
+            piper_auto_download=_env_bool(env, "TTS_PIPER_AUTO_DOWNLOAD", True),
+            max_upload_mb=_env_int(env, "TTS_MAX_UPLOAD_MB", 25),
+            idle_unload_s=_env_int(env, "TTS_IDLE_UNLOAD_S", 300),
+            idle_poll_s=_env_int(env, "TTS_IDLE_POLL_S", 30),
+            max_waiting=_env_int(env, "TTS_MAX_WAITING", 0),
+            queue_timeout_s=_env_float(env, "TTS_QUEUE_TIMEOUT_S", 0.0),
+            wyoming_enabled=_env_bool(env, "TTS_WYOMING_ENABLED", False),
+            wyoming_host=env.get("TTS_WYOMING_HOST", "0.0.0.0"),
+            wyoming_port=_env_int(env, "TTS_WYOMING_PORT", 10200),
             wyoming_samples_per_chunk=_env_int(
-                env, "POCKET_TTS_WYOMING_SAMPLES_PER_CHUNK", 1024
+                env, "TTS_WYOMING_SAMPLES_PER_CHUNK", 1024
             ),
             wyoming_sentence_silence=_env_float(
-                env, "POCKET_TTS_WYOMING_SENTENCE_SILENCE", 0.0
+                env, "TTS_WYOMING_SENTENCE_SILENCE", 0.0
             ),
             wyoming_auto_punctuation=env.get(
-                "POCKET_TTS_WYOMING_AUTO_PUNCTUATION", ".?!。？！．؟"
+                "TTS_WYOMING_AUTO_PUNCTUATION", ".?!。？！．؟"
             ),
-            wyoming_zeroconf=_env_bool(env, "POCKET_TTS_WYOMING_ZEROCONF", False),
-            wyoming_name=env.get("POCKET_TTS_WYOMING_NAME", "tts-openai"),
+            wyoming_zeroconf=_env_bool(env, "TTS_WYOMING_ZEROCONF", False),
+            wyoming_name=env.get("TTS_WYOMING_NAME", "tts-openai"),
             wyoming_ready_timeout_s=_env_float(
-                env, "POCKET_TTS_WYOMING_READY_TIMEOUT_S", 60.0
+                env, "TTS_WYOMING_READY_TIMEOUT_S", 60.0
             ),
-            piper_speaker=env.get("POCKET_TTS_PIPER_SPEAKER", ""),
-            piper_length_scale=_env_float_optional(env, "POCKET_TTS_PIPER_LENGTH_SCALE"),
-            piper_noise_scale=_env_float_optional(env, "POCKET_TTS_PIPER_NOISE_SCALE"),
-            piper_noise_w=_env_float_optional(env, "POCKET_TTS_PIPER_NOISE_W"),
+            piper_speaker=env.get("TTS_PIPER_SPEAKER", ""),
+            piper_length_scale=_env_float_optional(env, "TTS_PIPER_LENGTH_SCALE"),
+            piper_noise_scale=_env_float_optional(env, "TTS_PIPER_NOISE_SCALE"),
+            piper_noise_w=_env_float_optional(env, "TTS_PIPER_NOISE_W"),
         )

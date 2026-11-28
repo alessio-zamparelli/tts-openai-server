@@ -13,7 +13,7 @@
 #
 # Build:    docker build -f deploy/Dockerfile -t tts-openai .
 # Run:      docker run --rm -p 8080:8000 -p 10200:10200 -v tts-data:/data tts-openai
-#           (add -e POCKET_TTS_WYOMING_ENABLED=1 for Home Assistant's Wyoming integration)
+#           (add -e TTS_WYOMING_ENABLED=1 for Home Assistant's Wyoming integration)
 # Pocket:   docker build -f deploy/Dockerfile --build-arg WITH_POCKET=1 -t tts-pocket .
 
 ###############################################################################
@@ -80,11 +80,11 @@ RUN apt-get update \
 ENV PATH="/app/.venv/bin:$PATH" \
     UV_PYTHON_DOWNLOADS=0 \
     PYTHONUNBUFFERED=1 \
-    POCKET_TTS_BACKEND=piper \
-    POCKET_TTS_HOST=0.0.0.0 \
-    POCKET_TTS_PORT=8000 \
-    POCKET_TTS_CACHE_DIR=/data/cache \
-    POCKET_TTS_PIPER_VOICE_DIR=/data/cache/piper \
+    TTS_BACKEND=piper \
+    TTS_HOST=0.0.0.0 \
+    TTS_PORT=8000 \
+    TTS_CACHE_DIR=/data/cache \
+    TTS_PIPER_VOICE_DIR=/data/cache/piper \
     HF_HOME=/data/hf
 
 WORKDIR /app
@@ -119,7 +119,7 @@ USER tts
 EXPOSE 8000 10200
 
 # The HTTP server binds immediately; the backend engine loads in a background
-# thread. The probe honors POCKET_TTS_HOST/PORT and bypasses HTTP proxy env vars.
+# thread. The probe honors TTS_HOST/PORT and bypasses HTTP proxy env vars.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
     CMD ["tts-openai", "--healthcheck"]
 

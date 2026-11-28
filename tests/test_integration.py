@@ -6,11 +6,11 @@ drives it over real HTTP with ``httpx`` — the full stack, no mocks. The
 OpenAI-compat surface is asserted directly (error payloads carry the
 ``invalid_request_error`` shape, content types, chunked streaming).
 
-Skipped unless ``POCKET_TTS_E2E=1`` so the default ``uv run pytest`` (fast,
+Skipped unless ``TTS_E2E=1`` so the default ``uv run pytest`` (fast,
 offline, mocked) is unaffected:
 
     uv sync --extra engine               # install pocket-tts (CPU torch)
-    POCKET_TTS_E2E=1 uv run pytest -m e2e -v
+    TTS_E2E=1 uv run pytest -m e2e -v
 """
 
 from __future__ import annotations
@@ -29,8 +29,8 @@ import pytest
 pytestmark = [
     pytest.mark.e2e,
     pytest.mark.skipif(
-        os.environ.get("POCKET_TTS_E2E") != "1",
-        reason="real-model e2e is opt-in: run with POCKET_TTS_E2E=1",
+        os.environ.get("TTS_E2E") != "1",
+        reason="real-model e2e is opt-in: run with TTS_E2E=1",
     ),
 ]
 

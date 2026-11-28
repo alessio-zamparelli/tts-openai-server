@@ -5,10 +5,10 @@ ONNX model per voice. This module adapts a ``PiperVoice`` to the engine's
 duck-typed ``TTSModelLike`` protocol so :class:`TTSEngine` keeps owning the
 generation lock, voice-state LRU and idle eviction.
 
-Voice files are cached under ``POCKET_TTS_PIPER_VOICE_DIR`` (default
+Voice files are cached under ``TTS_PIPER_VOICE_DIR`` (default
 ``~/.cache/piper``) and downloaded on demand from the
 ``rhasspy/piper-voices`` Hugging Face repo unless
-``POCKET_TTS_PIPER_AUTO_DOWNLOAD=false``.
+``TTS_PIPER_AUTO_DOWNLOAD=false``.
 """
 
 from __future__ import annotations
@@ -179,7 +179,7 @@ class PiperTTSModel:
         if not self.auto_download:
             raise ValueError(
                 f"Piper voice {resolved!r} is not installed in {self.voice_dir} and "
-                "POCKET_TTS_PIPER_AUTO_DOWNLOAD is disabled."
+                "TTS_PIPER_AUTO_DOWNLOAD is disabled."
             )
         # One download at a time; a waiter re-checks the files afterwards.
         with self._download_lock:

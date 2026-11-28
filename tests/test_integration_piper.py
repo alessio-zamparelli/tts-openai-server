@@ -5,7 +5,7 @@
 
 Boots a real uvicorn server with the actual Piper backend and drives it over
 HTTP. The default voice ``it_IT-paola-medium`` (~64 MB) is downloaded into
-``POCKET_TTS_PIPER_VOICE_DIR`` (default ``~/.cache/piper``) when missing.
+``TTS_PIPER_VOICE_DIR`` (default ``~/.cache/piper``) when missing.
 """
 
 from __future__ import annotations

@@ -50,6 +50,6 @@ optional mDNS library:
 - `regex` (https://github.com/mrabarnett/mrab-regex) — Apache-2.0 AND CNRI-Python
 - `zeroconf` (https://github.com/python-zeroconf/python-zeroconf) — LGPL-2.1-or-later
 
-`zeroconf` is only used when `POCKET_TTS_WYOMING_ZEROCONF=1`; it is installed by
+`zeroconf` is only used when `TTS_WYOMING_ZEROCONF=1`; it is installed by
 default so enabling discovery needs no extra package.
 

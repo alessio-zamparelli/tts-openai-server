@@ -101,6 +101,19 @@ def create_app(config: Config | None = None, engine: TTSEngine | None = None) ->
     def _openai_error_handler(request: Request, exc: Exception) -> JSONResponse:
         # Starlette dispatches this handler only for the registered exception type.
         err = cast(OpenAIError, exc)
+        # Surface the failure server-side: without this a 400 is just a bare
+        # uvicorn access line and the reason (e.g. an unknown voice/format sent
+        # by an OpenAI client) is invisible in the logs.
+        log = logger.error if err.status >= 500 else logger.warning
+        client = request.client.host if request.client else "-"
+        log(
+            "rejecting %s %s (client=%s): %d %s",
+            request.method,
+            request.url.path,
+            client,
+            err.status,
+            err.message,
+        )
         return JSONResponse(status_code=err.status, content=err.to_payload())
 
     app.add_exception_handler(OpenAIError, _openai_error_handler)
@@ -116,7 +129,7 @@ def create_app(config: Config | None = None, engine: TTSEngine | None = None) ->
 
 
 def _idle_watchdog(app: FastAPI, config: Config, stop: threading.Event) -> None:
-    """Periodically evict the model after ``POCKET_TTS_IDLE_UNLOAD_S`` without
+    """Periodically evict the model after ``TTS_IDLE_UNLOAD_S`` without
     API requests. Health probes do NOT touch the engine's idle timer, so they
     never reset the window (see PLAN-idle-unload.md).
     """
@@ -153,7 +166,7 @@ def _healthcheck() -> int:
 
     try:
         config = Config.from_env()
-    except Exception as exc:  # invalid POCKET_TTS_* config: server would not boot either
+    except Exception as exc:  # invalid TTS_* config: server would not boot either
         print(f"healthcheck: invalid config ({type(exc).__name__}: {exc})", file=sys.stderr)
         return 1
 
@@ -179,13 +192,47 @@ def _healthcheck() -> int:
             conn.close()
 
 
+def _configure_logging(config: Config) -> None:
+    """Apply the configured log level and quiet successful /health probes.
+
+    Called once from ``main()`` before uvicorn boots; ``Config.log_level``
+    (``TTS_LOG_LEVEL``) drives both the app loggers and uvicorn's own.
+    """
+    logging.basicConfig(
+        level=logging.getLevelName(config.log_level.upper()),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    # uvicorn.access: drop only *successful* healthcheck lines, so a failing
+    # probe (503 while the model loads, 500) is still visible in the logs.
+    logging.getLogger("uvicorn.access").addFilter(_HealthSuccessFilter())
+
+
+class _HealthSuccessFilter(logging.Filter):
+    """Drop ``200`` access lines for ``GET /health``; failures stay visible.
+
+    uvicorn emits access records with positional args that its own
+    ``AccessFormatter`` unpacks as ``(client_addr, method, full_path,
+    http_version, status_code)`` — read the same tuple here instead of parsing
+    the rendered line (which appends the reason phrase, ``200 OK``).
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            _, method, full_path, _, status_code = record.args
+        except (TypeError, ValueError):  # defensive: unexpected record shape
+            return True
+        if int(status_code) != 200:  # non-200 health responses are logged
+            return True
+        return not (method == "GET" and full_path.split("?", 1)[0] == "/health")
+
+
 def main() -> None:
     if "--healthcheck" in sys.argv[1:]:
         raise SystemExit(_healthcheck())
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     config = Config.from_env()
+    _configure_logging(config)
     app = create_app(config)
-    uvicorn.run(app, host=config.host, port=config.port)
+    uvicorn.run(app, host=config.host, port=config.port, log_level=config.log_level)
 
 
 if __name__ == "__main__":
